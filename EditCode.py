@@ -26,7 +26,7 @@ from PyQt6.QtWidgets import (QApplication, QMainWindow, QFileDialog,
                              QAbstractButton, QMessageBox, QTabBar, QSizePolicy) 
 from PyQt6.QtWebEngineWidgets import QWebEngineView
 from PyQt6.QtGui import QFileSystemModel, QFont, QAction, QColor, QPalette
-from PyQt6.QtCore import Qt, QProcess, QLocale
+from PyQt6.QtCore import Qt, QProcess, QLocale, QEvent
 from PyQt6.QtGui import QFileSystemModel, QFont, QAction, QColor, QPalette, QIcon
 
 SVG_CLOSE = '<svg viewBox="0 0 10 10" xmlns="http://www.w3.org/2000/svg"><path d="M 2 2 L 8 8 M 8 2 L 2 8" stroke="#888888" stroke-width="1.5" stroke-linecap="round"/></svg>'
@@ -727,7 +727,29 @@ if __name__ == "__main__":
         except Exception:
             pass
 
-    app = QApplication(sys.argv)
+    class EditCodeApp(QApplication):
+        def __init__(self, argv):
+            super().__init__(argv)
+            self.main_window = None
+            self.pending_files = [] 
+
+        def event(self, event):
+            if event.type() == QEvent.Type.FileOpen:
+                file_path = event.file()
+                if self.main_window:
+                    self.main_window.load_file_into_editor(file_path)
+                 
+                    if self.main_window.tabs.count() == 2 and self.main_window.tabs.tabText(0) == T['new_file']:
+                        browser = self.main_window.tabs.widget(0)
+                        if not getattr(browser, 'is_modified', True):
+                            self.main_window.tabs.removeTab(0)
+                            browser.deleteLater()
+                else:
+                    self.pending_files.append(file_path)
+                return True
+            return super().event(event)
+
+    app = EditCodeApp(sys.argv)
     app.setStyle("Fusion") 
     
     if hasattr(sys, '_MEIPASS'):
@@ -736,6 +758,7 @@ if __name__ == "__main__":
         basedir = os.path.dirname(os.path.abspath(__file__))
         
     icon_path = os.path.join(basedir, 'icon.ico')
+    # ---------------------------------------------------------
     
     dark_palette = QPalette()
     dark_palette.setColor(QPalette.ColorRole.Window, QColor(18, 18, 18))
@@ -753,6 +776,16 @@ if __name__ == "__main__":
     app.setPalette(dark_palette)
     
     window = EditCode()
+    app.main_window = window 
+    
+    for f in app.pending_files:
+        window.load_file_into_editor(f)
+        if window.tabs.count() == 2 and window.tabs.tabText(0) == T['new_file']:
+            browser = window.tabs.widget(0)
+            if not getattr(browser, 'is_modified', True):
+                window.tabs.removeTab(0)
+                browser.deleteLater()
+    app.pending_files.clear()
     
     if platform.system() == "Windows":
         app_icon = QIcon(icon_path)
