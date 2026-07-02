@@ -3,7 +3,7 @@ name: Build EditCode
 on:
   push:
     branches: [ "main", "master" ]
-  workflow_dispatch: 
+  workflow_dispatch:
 
 jobs:
   build:
@@ -11,7 +11,6 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        
         os: [macos-latest, windows-latest]
 
     steps:
@@ -21,7 +20,7 @@ jobs:
     - name: Set up Python
       uses: actions/setup-python@v5
       with:
-        python-version: '3.11' 
+        python-version: '3.11'
 
     - name: Install dependencies
       run: |
@@ -31,18 +30,11 @@ jobs:
     - name: Build with PyInstaller
       run: pyinstaller EditCode.spec
 
-    
     - name: Archive macOS app
       if: matrix.os == 'macos-latest'
       run: |
         cd dist
         tar -czf EditCode-macOS.tar.gz EditCode.app
-
-    - name: Archive Windows app
-      if: matrix.os == 'windows-latest'
-      run: |
-        Compress-Archive -Path dist\EditCode -DestinationPath dist\EditCode-Windows.zip
-
 
     - name: Upload macOS Artifact
       if: matrix.os == 'macos-latest'
@@ -56,4 +48,4 @@ jobs:
       uses: actions/upload-artifact@v4
       with:
         name: EditCode-Windows
-        path: dist/EditCode-Windows.zip
+        path: dist/EditCode
