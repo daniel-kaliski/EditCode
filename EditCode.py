@@ -200,6 +200,14 @@ class EditCode(QMainWindow):
                 padding: 0; 
                 outline: none;
             }
+  
+            * {
+                outline: none;
+            }
+            QPushButton:focus {
+                outline: none;
+                border: none;
+            }
             QToolTip {
                 background-color: #2a2a2a;
                 color: #ffffff;
@@ -529,9 +537,9 @@ class EditCode(QMainWindow):
         
         if browser.is_modified or not browser.filepath:
             dialog = CustomDialog(T['save'], T['save_before_run'], self)
-            dialog.exec() 
-            self.save_file(run_after_save=True)
-            return
+            if dialog.exec() == 1: 
+                self.save_file(run_after_save=True)
+            return 
 
         self.execute_command(browser.filepath)
 
@@ -720,9 +728,6 @@ if __name__ == "__main__":
         basedir = os.path.dirname(os.path.abspath(__file__))
         
     icon_path = os.path.join(basedir, 'icon.ico')
-    app_icon = QIcon(icon_path)
-    
-    app.setWindowIcon(app_icon)
     
     dark_palette = QPalette()
     dark_palette.setColor(QPalette.ColorRole.Window, QColor(18, 18, 18))
@@ -741,7 +746,10 @@ if __name__ == "__main__":
     
     window = EditCode()
     
-    window.setWindowIcon(app_icon) 
+    if platform.system() == "Windows":
+        app_icon = QIcon(icon_path)
+        app.setWindowIcon(app_icon)
+        window.setWindowIcon(app_icon) 
     
     window.show()
     sys.exit(app.exec())
