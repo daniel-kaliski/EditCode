@@ -6,7 +6,7 @@ a = Analysis(
     ['EditCode.py'],
     pathex=[],
     binaries=[],
-    datas=[],
+    datas=[('icon.ico', '.')], 
     hiddenimports=[],
     hookspath=[],
     hooksconfig={},

@@ -27,6 +27,7 @@ from PyQt6.QtWidgets import (QApplication, QMainWindow, QFileDialog,
 from PyQt6.QtWebEngineWidgets import QWebEngineView
 from PyQt6.QtGui import QFileSystemModel, QFont, QAction, QColor, QPalette
 from PyQt6.QtCore import Qt, QProcess, QLocale
+from PyQt6.QtGui import QFileSystemModel, QFont, QAction, QColor, QPalette, QIcon
 
 SVG_CLOSE = '<svg viewBox="0 0 10 10" xmlns="http://www.w3.org/2000/svg"><path d="M 2 2 L 8 8 M 8 2 L 2 8" stroke="#888888" stroke-width="1.5" stroke-linecap="round"/></svg>'
 SVG_CLOSE_HOVER = '<svg viewBox="0 0 10 10" xmlns="http://www.w3.org/2000/svg"><path d="M 2 2 L 8 8 M 8 2 L 2 8" stroke="#ffffff" stroke-width="1.5" stroke-linecap="round"/></svg>'
@@ -700,6 +701,7 @@ class EditCode(QMainWindow):
         event.accept()
 
 if __name__ == "__main__":
+    # --- NAPRAWA GRUPOWANIA NA PASKU ZADAŃ (WINDOWS) ---
     if platform.system() == "Windows":
         try:
             import ctypes
@@ -707,8 +709,17 @@ if __name__ == "__main__":
             ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
         except Exception:
             pass
+
     app = QApplication(sys.argv)
     app.setStyle("Fusion") 
+    
+    if getattr(sys, 'frozen', False):
+        basedir = os.path.dirname(sys.executable)
+    else:
+        basedir = os.path.dirname(os.path.abspath(__file__))
+        
+    icon_path = os.path.join(basedir, 'icon.ico')
+    app.setWindowIcon(QIcon(icon_path))
     
     dark_palette = QPalette()
     dark_palette.setColor(QPalette.ColorRole.Window, QColor(18, 18, 18))
