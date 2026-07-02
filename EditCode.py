@@ -23,7 +23,7 @@ from PyQt6.QtWidgets import (QApplication, QMainWindow, QFileDialog,
                              QVBoxLayout, QWidget, QSplitter, 
                              QTreeView, QPlainTextEdit, QLabel,
                              QTabWidget, QDialog, QPushButton, QHBoxLayout, QFrame,
-                             QAbstractButton, QMessageBox, QTabBar)
+                             QAbstractButton, QMessageBox, QTabBar, QSizePolicy) 
 from PyQt6.QtWebEngineWidgets import QWebEngineView
 from PyQt6.QtGui import QFileSystemModel, QFont, QAction, QColor, QPalette
 from PyQt6.QtCore import Qt, QProcess, QLocale
@@ -225,13 +225,14 @@ class EditCode(QMainWindow):
 
         self.custom_toolbar = QFrame()
         self.custom_toolbar.setStyleSheet("background-color: #121212; border: none; outline: none;")
+        self.custom_toolbar.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         toolbar_layout = QHBoxLayout(self.custom_toolbar)
         toolbar_layout.setContentsMargins(10, 6, 10, 6) 
         toolbar_layout.setSpacing(10)
 
         run_btn = QPushButton(T['run'])
         run_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        run_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus) # <--- USUWA NIEBIESKĄ OBWÓDKĘ
+        run_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus) 
         run_btn.setStyleSheet("""
             QPushButton {
                 background-color: #2d2d2d; color: #ffffff; 
@@ -244,7 +245,7 @@ class EditCode(QMainWindow):
 
         stop_btn = QPushButton(T['stop'])
         stop_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        stop_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus) # <--- USUWA NIEBIESKĄ OBWÓDKĘ
+        stop_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus) 
         stop_btn.setStyleSheet("""
             QPushButton {
                 background-color: #2d2d2d; color: #ffffff; 
@@ -270,7 +271,7 @@ class EditCode(QMainWindow):
         self.vertical_splitter.setStyleSheet(splitter_style)
         self.vertical_splitter.setHandleWidth(0)   
 
-        central_layout.addWidget(self.horizontal_splitter)
+        central_layout.addWidget(self.horizontal_splitter, 1)
 
         self.file_model = QFileSystemModel()
         self.file_model.setRootPath("") 
