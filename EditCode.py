@@ -369,15 +369,22 @@ class EditCode(QMainWindow):
         self.terminal_output.installEventFilter(self)
 
         self.create_menu()
-      
-        self.new_file()
-   
+        
+        opened_from_args = False
+        if len(sys.argv) > 1:
+            for arg in sys.argv[1:]:
+                if os.path.isfile(arg):
+                    self.load_file_into_editor(arg)
+                    opened_from_args = True
+        
+        if not opened_from_args:
+            self.new_file()
+        
         self.tabs.currentChanged.connect(self.on_tab_changed)
         
         self.on_tab_changed(self.tabs.currentIndex())
         
     def remove_plus_close_button(self):
-        """Siłowo usuwa krzyżyk zamykający z ostatniej zakładki (tej ze znakiem +)"""
         last_idx = self.tabs.count() - 1
         if last_idx >= 0 and self.tabs.tabText(last_idx) == "+":
             self.tabs.tabBar().setTabButton(last_idx, QTabBar.ButtonPosition.RightSide, None)
