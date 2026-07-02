@@ -223,6 +223,7 @@ class EditCode(QMainWindow):
 
         run_btn = QPushButton(T['run'])
         run_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        run_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus) # <--- USUWA NIEBIESKĄ OBWÓDKĘ
         run_btn.setStyleSheet("""
             QPushButton {
                 background-color: #2d2d2d; color: #ffffff; 
@@ -235,6 +236,7 @@ class EditCode(QMainWindow):
 
         stop_btn = QPushButton(T['stop'])
         stop_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        stop_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus) # <--- USUWA NIEBIESKĄ OBWÓDKĘ
         stop_btn.setStyleSheet("""
             QPushButton {
                 background-color: #2d2d2d; color: #ffffff; 
@@ -701,11 +703,10 @@ class EditCode(QMainWindow):
         event.accept()
 
 if __name__ == "__main__":
-    # --- NAPRAWA GRUPOWANIA NA PASKU ZADAŃ (WINDOWS) ---
     if platform.system() == "Windows":
         try:
             import ctypes
-            myappid = 'com.danielkaliski.editcode.1.0.0'
+            myappid = u'com.danielkaliski.editcode.1.0.0'
             ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
         except Exception:
             pass
@@ -713,13 +714,15 @@ if __name__ == "__main__":
     app = QApplication(sys.argv)
     app.setStyle("Fusion") 
     
-    if getattr(sys, 'frozen', False):
-        basedir = os.path.dirname(sys.executable)
+    if hasattr(sys, '_MEIPASS'):
+        basedir = sys._MEIPASS
     else:
         basedir = os.path.dirname(os.path.abspath(__file__))
         
     icon_path = os.path.join(basedir, 'icon.ico')
-    app.setWindowIcon(QIcon(icon_path))
+    app_icon = QIcon(icon_path)
+    
+    app.setWindowIcon(app_icon)
     
     dark_palette = QPalette()
     dark_palette.setColor(QPalette.ColorRole.Window, QColor(18, 18, 18))
@@ -737,5 +740,8 @@ if __name__ == "__main__":
     app.setPalette(dark_palette)
     
     window = EditCode()
+    
+    window.setWindowIcon(app_icon) 
+    
     window.show()
     sys.exit(app.exec())
