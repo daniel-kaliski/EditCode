@@ -51,7 +51,7 @@ T = {
     'pl': {
         'file': 'Plik', 'new': 'Nowy', 'open_file': 'Otwórz plik...',
         'open_folder': 'Otwórz folder projektu...', 'save': 'Zapisz',
-        'exit': 'Wyjdź', 'tools': 'Narzędzia', 'run': '▶ Uruchom', 'stop': '⏹ Zatrzymaj',
+        'exit': 'Wyjdź', 'tools': 'Narzędzia', 'run': '▶ Uruchom', 'stop': '■ Zatrzymaj',
         'help': 'Pomoc', 'about': 'O programie EditCode',
         'new_file': 'Nowy plik', 'terminal': ' Terminal',
         'unsaved_title': 'Niezapisane zmiany',
@@ -71,7 +71,7 @@ T = {
     'en': {
         'file': 'File', 'new': 'New', 'open_file': 'Open File...',
         'open_folder': 'Open Folder...', 'save': 'Save',
-        'exit': 'Exit', 'tools': 'Tools', 'run': '▶ Run', 'stop': '⏹ Stop',
+        'exit': 'Exit', 'tools': 'Tools', 'run': '▶ Run', 'stop': '■ Stop',
         'help': 'Help', 'about': 'About EditCode',
         'new_file': 'Untitled', 'terminal': ' Terminal',
         'unsaved_title': 'Unsaved Changes',
