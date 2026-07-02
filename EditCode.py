@@ -700,6 +700,13 @@ class EditCode(QMainWindow):
         event.accept()
 
 if __name__ == "__main__":
+    if platform.system() == "Windows":
+        try:
+            import ctypes
+            myappid = 'com.danielkaliski.editcode.1.0.0'
+            ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
+        except Exception:
+            pass
     app = QApplication(sys.argv)
     app.setStyle("Fusion") 
     
