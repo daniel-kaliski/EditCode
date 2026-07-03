@@ -25,6 +25,7 @@ from PyQt6.QtWidgets import (QApplication, QMainWindow, QFileDialog,
                              QTabWidget, QDialog, QPushButton, QHBoxLayout, QFrame,
                              QAbstractButton, QMessageBox, QTabBar, QSizePolicy) 
 from PyQt6.QtWebEngineWidgets import QWebEngineView
+from PyQt6.QtWebEngineCore import QWebEnginePage
 from PyQt6.QtGui import QFileSystemModel, QFont, QAction, QColor, QPalette
 from PyQt6.QtCore import Qt, QProcess, QLocale, QEvent
 from PyQt6.QtGui import QFileSystemModel, QFont, QAction, QColor, QPalette, QIcon
@@ -49,6 +50,7 @@ LANG = detect_language()
 
 T = {
     'pl': {
+        'edit': 'Edycja', 'find': 'Znajdź',
         'file': 'Plik', 'new': 'Nowy', 'open_file': 'Otwórz plik...',
         'open_folder': 'Otwórz folder projektu...', 'save': 'Zapisz',
         'exit': 'Wyjdź', 'tools': 'Narzędzia', 'run': '▶ Uruchom', 'stop': '■ Zatrzymaj',
@@ -66,9 +68,14 @@ T = {
         'no_run_support': '\n--- Brak obsługi uruchamiania dla rozszerzenia {} ---\n',
         'doc_def': 'Definiuje nową funkcję', 'doc_print': 'Wypisuje tekst na konsolę',
         'doc_if': 'Główny blok uruchomieniowy skryptu', 'doc_for': 'Pętla for',
-        'close_tab_btn': 'Zamknij zakładkę'
+        'close_tab_btn': 'Zamknij zakładkę',
+        
+        'open_error': 'Nie udało się otworzyć pliku:\n{}',
+        'save_error': 'Nie udało się zapisać pliku:\n{}',
+        'binary_error': 'Tego pliku nie można otworzyć w edytorze kodu.'
     },
     'en': {
+        'edit': 'Edit', 'find': 'Find',
         'file': 'File', 'new': 'New', 'open_file': 'Open File...',
         'open_folder': 'Open Folder...', 'save': 'Save',
         'exit': 'Exit', 'tools': 'Tools', 'run': '▶ Run', 'stop': '■ Stop',
@@ -86,12 +93,16 @@ T = {
         'no_run_support': '\n--- No run support for {} ---\n',
         'doc_def': 'Defines a new function', 'doc_print': 'Prints text to console',
         'doc_if': 'Main execution block', 'doc_for': 'For loop',
-        'close_tab_btn': 'Close Tab'
+        'close_tab_btn': 'Close Tab',
+        
+        'open_error': 'Could not open file:\n{}',
+        'save_error': 'Could not save file:\n{}',
+        'binary_error': 'This file cannot be opened in the code editor.'
     }
 }[LANG]
 
 class CustomDialog(QDialog):
-    def __init__(self, title, message, parent=None):
+    def __init__(self, title, message, parent=None, buttons="yes_no"):
         super().__init__(parent)
         self.setWindowTitle(title)
         self.setWindowFlags(Qt.WindowType.Dialog | Qt.WindowType.FramelessWindowHint)
@@ -116,14 +127,18 @@ class CustomDialog(QDialog):
         btn_layout = QHBoxLayout()
         btn_layout.addStretch() 
         
-        yes_btn = QPushButton(T['yes'])
-        no_btn = QPushButton(T['no'])
-        
-        yes_btn.clicked.connect(lambda: self.done(1))
-        no_btn.clicked.connect(lambda: self.done(0))
-        
-        btn_layout.addWidget(yes_btn)
-        btn_layout.addWidget(no_btn)
+        if buttons == "yes_no":
+            yes_btn = QPushButton(T['yes'])
+            no_btn = QPushButton(T['no'])
+            yes_btn.clicked.connect(lambda: self.done(1))
+            no_btn.clicked.connect(lambda: self.done(0))
+            btn_layout.addWidget(yes_btn)
+            btn_layout.addWidget(no_btn)
+        elif buttons == "ok":
+            ok_btn = QPushButton(T['ok'])
+            ok_btn.clicked.connect(lambda: self.done(1))
+            btn_layout.addWidget(ok_btn)
+            
         layout.addLayout(btn_layout)
 
 MONACO_HTML = """
@@ -145,7 +160,10 @@ MONACO_HTML = """
         }
 
         require.config({ paths: { 'vs': 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.40.0/min/vs' }});
-        var editor;
+        
+        // ZMIANA: Unikalna nazwa zmiennej zabezpieczająca przed konfliktem z <div id="editor">
+        window.myEditor = null; 
+
         require(['vs/editor/editor.main'], function() {
             monaco.languages.registerCompletionItemProvider('python', {
                 provideCompletionItems: function(model, position) {
@@ -159,18 +177,46 @@ MONACO_HTML = """
                 }
             });
 
+            if ('__LANG__' === 'pl') {
+                setInterval(function() {
+                    document.querySelectorAll('textarea[placeholder="Find"], input[placeholder="Find"]').forEach(function(e) { e.placeholder = 'Znajdź'; });
+                    document.querySelectorAll('textarea[placeholder="Replace"], input[placeholder="Replace"]').forEach(function(e) { e.placeholder = 'Zamień'; });
+                    
+                    document.querySelectorAll('.matchesCount').forEach(function(e) {
+                        if (e.innerText === 'No results') e.innerText = 'Brak wyników';
+                        else if (e.innerText.indexOf(' of ') !== -1) e.innerText = e.innerText.replace(' of ', ' z ');
+                    });
+
+                    var titles = {
+                        'Previous match (Shift+Enter)': 'Poprzedni wynik (Shift+Enter)',
+                        'Next match (Enter)': 'Następny wynik (Enter)',
+                        'Close (Escape)': 'Zamknij (Escape)',
+                        'Replace (Enter)': 'Zamień (Enter)',
+                        'Replace All (Enter)': 'Zamień wszystko (Enter)',
+                        'Match Case': 'Uwzględniaj wielkość liter',
+                        'Match Whole Word': 'Dopasuj całe słowo',
+                        'Use Regular Expression': 'Użyj wyrażeń regularnych'
+                    };
+                    for (var key in titles) {
+                        document.querySelectorAll('[title="' + key + '"]').forEach(function(e) { e.title = titles[key]; });
+                    }
+                }, 200);
+            }
+
             var fileContent = b64DecodeUnicode('__B64_CONTENT__');
 
-            editor = monaco.editor.create(document.getElementById('editor'), {
+            window.myEditor = monaco.editor.create(document.getElementById('editor'), {
                 value: fileContent,
                 language: '__INITIAL_LANG__',
                 theme: 'vs-dark',
                 automaticLayout: true
             });
 
-            editor.onDidChangeModelContent(function() { document.title = "MODIFIED"; });
+            window.myEditor.onDidChangeModelContent(function() { document.title = "MODIFIED"; });
         });
-        function getEditorContent() { return editor.getValue(); }
+        
+        // ZMIANA: Zapisywanie uwzględnia nową zmienną
+        function getEditorContent() { return window.myEditor ? window.myEditor.getValue() : ""; }
         function setEditorSaved() { document.title = "SAVED"; }
     </script>
 </body>
@@ -180,7 +226,14 @@ MONACO_HTML = """
 MONACO_HTML = MONACO_HTML.replace('__DOC_DEF__', T['doc_def'])\
                          .replace('__DOC_PRINT__', T['doc_print'])\
                          .replace('__DOC_IF__', T['doc_if'])\
-                         .replace('__DOC_FOR__', T['doc_for'])
+                         .replace('__DOC_FOR__', T['doc_for'])\
+                         .replace('__LANG__', LANG)
+
+class CustomWebEnginePage(QWebEnginePage):
+    def javaScriptConsoleMessage(self, level, message, lineNumber, sourceID):
+        if "Blocked aria-hidden" in message:
+            return
+        super().javaScriptConsoleMessage(level, message, lineNumber, sourceID)
 
 class EditCode(QMainWindow):
     def __init__(self):
@@ -412,6 +465,11 @@ class EditCode(QMainWindow):
         
         open_folder_act = file_menu.addAction(T['open_folder'])
         open_folder_act.triggered.connect(self.open_folder)
+        
+        edit_menu = menubar.addMenu(T['edit'])
+        find_act = edit_menu.addAction(T['find'])
+        find_act.setShortcut("Ctrl+F")
+        find_act.triggered.connect(self.find_text)
 
         self.save_act = file_menu.addAction(T['save'])
         self.save_act.setShortcut("Ctrl+S")
@@ -426,7 +484,16 @@ class EditCode(QMainWindow):
         about_act = help_menu.addAction(T['about'])
         about_act.setMenuRole(QAction.MenuRole.AboutRole)
         about_act.triggered.connect(self.show_about)
-
+    
+    def find_text(self):
+        index = self.tabs.currentIndex()
+        if index == -1 or self.tabs.tabText(index) == "+": return
+        
+        browser = self.tabs.widget(index)
+        
+        js_code = "if (window.myEditor) { window.myEditor.trigger('keyboard', 'actions.find', null); }"
+        browser.page().runJavaScript(js_code)
+        
     def show_about(self):
         if platform.system() == "Darwin":
             try:
@@ -466,6 +533,8 @@ class EditCode(QMainWindow):
 
     def create_tab(self, filepath=None, content="", lang="python"):
         browser = QWebEngineView()
+        page = CustomWebEnginePage(browser)
+        browser.setPage(page)
         browser.page().setBackgroundColor(QColor("#1e1e1e"))
         browser.setStyleSheet("border: none; outline: none;")
         
@@ -631,9 +700,14 @@ class EditCode(QMainWindow):
                 content = file.read()
             lang = self.get_language_from_extension(filepath)
             self.create_tab(filepath=filepath, content=content, lang=lang)
-        except Exception as e:
-            dialog = CustomDialog(T['error'], T['open_error'].format(e), self)
+            
+        except UnicodeDecodeError:
+            dialog = CustomDialog(T['error'], T['binary_error'], self, buttons="ok")
             dialog.exec()
+            
+        except Exception as e:
+                dialog = CustomDialog(T['error'], T['save_error'].format(e), self, buttons="ok")
+                dialog.exec()
 
     def save_file(self, run_after_save=False):
         index = self.tabs.currentIndex()
