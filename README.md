@@ -63,7 +63,7 @@ EditCode is ready to be built as a full-fledged native application (`.app` file 
 * `Ctrl + N` (or `Cmd + N`) - New file
 * `Ctrl + O` (or `Cmd + O`) - Open file
 * `Ctrl + S` (or `Cmd + S`) - Save current file
-* `Ctrl + f` (or `Cmd + f`) - Find
+* `Ctrl + F` (or `Cmd + F`) - Find
 
 ---
 
