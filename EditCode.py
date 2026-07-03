@@ -402,7 +402,7 @@ class EditCode(QMainWindow):
         terminal_label.setStyleSheet("background-color: #121212; color: #aaaaaa; padding: 6px; border: none;")
         
         self.terminal_output = QPlainTextEdit()
-        self.terminal_output.setFont(QFont("Courier New", 10))
+        self.terminal_output.setFont(QFont("Courier New", 14))
         self.terminal_output.setStyleSheet("background-color: #121212; color: #00FF00; border: none; padding: 4px; outline: none;")
         
         terminal_layout.addWidget(terminal_label)
