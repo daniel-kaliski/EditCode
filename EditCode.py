@@ -18,6 +18,7 @@ import subprocess
 import threading
 import json
 import platform
+import time  
 
 is_pl = False
 try:
@@ -99,8 +100,8 @@ HTML_CONTENT = """
 </head>
 <body>
     <div id="toolbar">
-        <button class="tool-btn" onclick="runCode()" id="btn-run"></button>
-        <button class="tool-btn" onclick="stopCode()" id="btn-stop"></button>
+        <button class="tool-btn" onclick="runCode()" id="btn-run" title="Uruchom (⌘Enter)"></button>
+        <button class="tool-btn" onclick="stopCode()" id="btn-stop" title="Zatrzymaj"></button>
     </div>
     
     <div id="tab-bar"></div>
@@ -332,7 +333,10 @@ class BackendApi:
         self.allow_quit = True
         self.stop_code()
         if self.window:
-            self.window.destroy()
+            try:
+                self.window.destroy()
+            except:
+                pass
         os._exit(0)
 
     def print_terminal(self, text):
@@ -429,7 +433,6 @@ class BackendApi:
             self.process.terminate()
             self.print_terminal(f"\n[EditCode] {T['stop_msg']}\n")
 
-
 def fix_macos_menu():
     if platform.system() != 'Darwin':
         return
@@ -444,7 +447,6 @@ def fix_macos_menu():
             if old_menu.numberOfItems() == 4: return
 
             new_menu = NSMenu.alloc().init()
-            
             app_menu_item = old_menu.itemAtIndex_(0).copy()
             new_menu.addItem_(app_menu_item)
             
@@ -464,7 +466,16 @@ def fix_macos_menu():
 
 def on_closing():
     if not api.allow_quit:
-        threading.Thread(target=lambda: api.window.evaluate_js('setTimeout(checkQuit, 10)'), daemon=True).start()
+        def trigger_js():
+            time.sleep(0.2)
+            if api.window:
+                try:
+                    api.window.evaluate_js('checkQuit()')
+                except:
+                    pass
+                    
+        threading.Thread(target=trigger_js, daemon=True).start()
+        
         return False
     return True
 
