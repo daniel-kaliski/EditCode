@@ -382,8 +382,14 @@ class BackendApi:
 
     def force_quit(self):
         self.allow_quit = True
-        if self.window:
-            threading.Timer(0.1, self.window.destroy).start()
+        
+        self.stop_code() 
+        
+        if platform.system() == 'Windows':
+            os._exit(0)
+        else:
+            if self.window:
+                threading.Timer(0.1, self.window.destroy).start()
 
     def print_terminal(self, text):
         if self.window:
