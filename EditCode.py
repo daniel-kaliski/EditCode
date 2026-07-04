@@ -99,8 +99,8 @@ HTML_CONTENT = """
 </head>
 <body>
     <div id="toolbar">
-        <button class="tool-btn" onclick="runCode()" id="btn-run" title="Uruchom (⌘Enter)"></button>
-        <button class="tool-btn" onclick="stopCode()" id="btn-stop" title="Zatrzymaj"></button>
+        <button class="tool-btn" onclick="runCode()" id="btn-run"></button>
+        <button class="tool-btn" onclick="stopCode()" id="btn-stop"></button>
     </div>
     
     <div id="tab-bar"></div>
@@ -305,7 +305,6 @@ HTML_CONTENT = """
         function checkQuit() {
             let hasUnsaved = tabs.some(t => !t.saved);
             if (!hasUnsaved) {
-                // Jeśli wszystko jest zapisane - zamknij natychmiast bez pytania!
                 pywebview.api.force_quit();
             } else {
                 document.getElementById('exit-msg').innerHTML = UI.quitUnsaved;
@@ -332,11 +331,16 @@ class BackendApi:
     def force_quit(self):
         self.allow_quit = True
         self.stop_code()
+        if self.window:
+            self.window.destroy()
         os._exit(0)
 
     def print_terminal(self, text):
         if self.window:
-            self.window.evaluate_js(f"appendTerminal({json.dumps(text)})")
+            try:
+                self.window.evaluate_js(f"appendTerminal({json.dumps(text)})")
+            except:
+                pass
 
     def get_lang(self, filepath):
         if filepath.endswith('.py'): return 'python'
@@ -425,9 +429,6 @@ class BackendApi:
             self.process.terminate()
             self.print_terminal(f"\n[EditCode] {T['stop_msg']}\n")
 
-def run_js(code):
-    if api.window:
-        threading.Thread(target=lambda: api.window.evaluate_js(code), daemon=True).start()
 
 def fix_macos_menu():
     if platform.system() != 'Darwin':
@@ -435,28 +436,35 @@ def fix_macos_menu():
         
     def apply_fix():
         try:
-            from AppKit import NSApplication
+            from AppKit import NSApplication, NSMenu
             app = NSApplication.sharedApplication()
-            main_menu = app.mainMenu()
-            if not main_menu: return
+            old_menu = app.mainMenu()
+            if not old_menu: return
 
-            main_menu.itemAtIndex_(0).setTitle_('EditCode')
+            if old_menu.numberOfItems() == 4: return
 
-            total_items = main_menu.numberOfItems()
-            if total_items > 4:
-                for i in range(total_items - 4, 0, -1):
-                    main_menu.removeItemAtIndex_(i)
-
+            new_menu = NSMenu.alloc().init()
+            
+            app_menu_item = old_menu.itemAtIndex_(0).copy()
+            new_menu.addItem_(app_menu_item)
+            
+            for i in range(old_menu.numberOfItems()):
+                item = old_menu.itemAtIndex_(i)
+                title = str(item.title()).strip()
+                if title in ['Plik', 'Edycja', 'Uruchom']:
+                    new_menu.addItem_(item.copy())
+                    
+            app.setMainMenu_(new_menu)
         except Exception as e:
             pass 
 
     from PyObjCTools import AppHelper
-    for delay in [0.2, 0.8, 1.5, 3.0]:
+    for delay in [0.3, 0.9, 2.0]:
         threading.Timer(delay, lambda: AppHelper.callAfter(apply_fix)).start()
 
 def on_closing():
     if not api.allow_quit:
-        run_js('checkQuit()')
+        threading.Thread(target=lambda: api.window.evaluate_js('setTimeout(checkQuit, 10)'), daemon=True).start()
         return False
     return True
 
@@ -478,32 +486,32 @@ if __name__ == '__main__':
     window.events.loaded += fix_macos_menu
     
     loc = {
-        'mac.menu.about': 'O programie EditCode' if is_pl else 'About EditCode',
-        'mac.menu.services': 'Usługi' if is_pl else 'Services',
-        'mac.menu.hide': 'Ukryj EditCode' if is_pl else 'Hide EditCode',
-        'mac.menu.hideOthers': 'Ukryj inne' if is_pl else 'Hide Others',
-        'mac.menu.showAll': 'Pokaż wszystkie' if is_pl else 'Show All',
-        'mac.menu.quit': 'Zakończ EditCode' if is_pl else 'Quit EditCode'
+        'mac.menu.about': 'O programie EditCode',
+        'mac.menu.services': 'Usługi',
+        'mac.menu.hide': 'Ukryj EditCode',
+        'mac.menu.hideOthers': 'Ukryj inne',
+        'mac.menu.showAll': 'Pokaż wszystkie',
+        'mac.menu.quit': 'Zakończ EditCode'
     }
 
     CMD = '⌘' if platform.system() == 'Darwin' else 'Ctrl'
     
     menu_items = [
         Menu('Plik' if is_pl else 'File', [
-            MenuAction(f"Otwórz  ({CMD}O)", lambda: run_js('openFile()')),
-            MenuAction(f"Zapisz  ({CMD}S)", lambda: run_js('saveFile()'))
+            MenuAction(f"Otwórz  ({CMD}O)", lambda: window.evaluate_js('setTimeout(openFile, 10)')),
+            MenuAction(f"Zapisz  ({CMD}S)", lambda: window.evaluate_js('setTimeout(saveFile, 10)'))
         ]),
         Menu('Edycja' if is_pl else 'Edit', [
-            MenuAction(f"Cofnij  ({CMD}Z)", lambda: run_js('if(editor) editor.trigger("keyboard", "undo", null);')),
-            MenuAction(f"Ponów  ({CMD}Y)", lambda: run_js('if(editor) editor.trigger("keyboard", "redo", null);')),
-            MenuAction(f"Kopiuj  ({CMD}C)", lambda: run_js('if(editor) editor.trigger("keyboard", "editor.action.clipboardCopyAction", null);')),
-            MenuAction(f"Wytnij  ({CMD}X)", lambda: run_js('if(editor) editor.trigger("keyboard", "editor.action.clipboardCutAction", null);')),
-            MenuAction(f"Wklej  ({CMD}V)", lambda: run_js('if(editor) editor.trigger("keyboard", "editor.action.clipboardPasteAction", null);')),
-            MenuAction(f"Znajdź  ({CMD}F)", lambda: run_js('triggerFind()'))
+            MenuAction(f"Cofnij  ({CMD}Z)", lambda: window.evaluate_js('setTimeout(function(){if(editor) editor.trigger("keyboard", "undo", null);}, 10)')),
+            MenuAction(f"Ponów  ({CMD}Y)", lambda: window.evaluate_js('setTimeout(function(){if(editor) editor.trigger("keyboard", "redo", null);}, 10)')),
+            MenuAction(f"Kopiuj  ({CMD}C)", lambda: window.evaluate_js('setTimeout(function(){if(editor) editor.trigger("keyboard", "editor.action.clipboardCopyAction", null);}, 10)')),
+            MenuAction(f"Wytnij  ({CMD}X)", lambda: window.evaluate_js('setTimeout(function(){if(editor) editor.trigger("keyboard", "editor.action.clipboardCutAction", null);}, 10)')),
+            MenuAction(f"Wklej  ({CMD}V)", lambda: window.evaluate_js('setTimeout(function(){if(editor) editor.trigger("keyboard", "editor.action.clipboardPasteAction", null);}, 10)')),
+            MenuAction(f"Znajdź  ({CMD}F)", lambda: window.evaluate_js('setTimeout(triggerFind, 10)'))
         ]),
         Menu('Uruchom' if is_pl else 'Run', [
-            MenuAction(f"Uruchom  ({CMD}Enter)", lambda: run_js('runCode()')),
-            MenuAction("Zatrzymaj" if is_pl else "Stop", lambda: run_js('stopCode()'))
+            MenuAction(f"Uruchom  ({CMD}Enter)", lambda: window.evaluate_js('setTimeout(runCode, 10)')),
+            MenuAction("Zatrzymaj" if is_pl else "Stop", lambda: window.evaluate_js('setTimeout(stopCode, 10)'))
         ])
     ]
 
