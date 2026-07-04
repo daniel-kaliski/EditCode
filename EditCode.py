@@ -62,7 +62,6 @@ HTML_CONTENT = """
         .btn-run { color: #4CAF50; display: flex; align-items: center; gap: 5px; }
         .btn-stop { color: #F44336; }
         
-        /* Styl dla wbudowanego menu (tylko Windows) */
         #win-menu { display: none; gap: 8px; margin-right: 15px; border-right: 1px solid #333; padding-right: 15px; }
         .btn-menu { background: transparent; color: #ccc; font-weight: normal; }
         .btn-menu:hover { background: #333; color: #fff; }
@@ -81,6 +80,28 @@ HTML_CONTENT = """
         
         #editor-container { flex: 1; position: relative; background: var(--bg); }
         #terminal { height: 200px; background: #0a0a0a; color: #00ff00; padding: 15px; overflow-y: auto; font-family: 'Menlo', 'Consolas', monospace; font-size: 12px; border-top: 1px solid #333; white-space: pre-wrap; word-wrap: break-word; }
+        
+        /* IDEALNIE WYJUSTOWANE OKNO ZAMYKANIA (MODAL) */
+        #exit-overlay { 
+            display: none; position: absolute; top: 0; left: 0; width: 100%; height: 100%; 
+            background: rgba(0, 0, 0, 0.65); z-index: 9999; 
+            justify-content: center; align-items: center; backdrop-filter: blur(2px);
+        }
+        .exit-modal { 
+            background: var(--panel); border: 1px solid #444; border-radius: 8px; 
+            padding: 22px 26px; width: 340px; box-shadow: 0 15px 35px rgba(0,0,0,0.6); 
+        }
+        .exit-content { 
+            display: flex; align-items: center; /* Idealne wyśrodkowanie ikony z tekstem */
+            gap: 18px; margin-bottom: 25px; 
+        }
+        .exit-icon { font-size: 32px; line-height: 1; }
+        .exit-text { font-size: 14px; line-height: 1.5; text-align: left; /* Czytelne i równo rozłożone */ }
+        .exit-buttons { display: flex; justify-content: flex-end; gap: 12px; }
+        .btn-cancel { background: #444; font-weight: normal; }
+        .btn-cancel:hover { background: #555; }
+        .btn-confirm { background: #F44336; }
+        .btn-confirm:hover { background: #D32F2F; }
     </style>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.40.0/min/vs/loader.min.js"></script>
 </head>
@@ -91,7 +112,6 @@ HTML_CONTENT = """
             <button class="btn-menu" onclick="saveFile()" id="btn-save">Zapisz</button>
             <button class="btn-menu" onclick="triggerFind()" id="btn-find">Szukaj</button>
         </div>
-        
         <button class="btn-run" onclick="runCode()" id="btn-run">▶ Uruchom</button>
         <button class="btn-stop" onclick="stopCode()" id="btn-stop">■ Zatrzymaj</button>
     </div>
@@ -100,8 +120,20 @@ HTML_CONTENT = """
     <div id="editor-container" id="editor"></div>
     <div id="terminal"></div>
 
+    <div id="exit-overlay">
+        <div class="exit-modal">
+            <div class="exit-content">
+                <div class="exit-icon" id="exit-icon">⚠️</div>
+                <div class="exit-text" id="exit-msg">Czy na pewno chcesz zamknąć program?</div>
+            </div>
+            <div class="exit-buttons">
+                <button class="btn-cancel" onclick="hideQuit()" id="btn-cancel">Anuluj</button>
+                <button class="btn-confirm" onclick="confirmQuit()" id="btn-confirm">Zakończ</button>
+            </div>
+        </div>
+    </div>
+
     <script>
-        // TŁUMACZENIA JS
         const userLang = navigator.language || navigator.userLanguage;
         const isEN = !userLang.toLowerCase().startsWith('pl');
         const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
@@ -118,23 +150,28 @@ HTML_CONTENT = """
             termReady: isEN ? "> EditCode Terminal ready...\\n\\n" : "> Terminal EditCode gotowy...\\n\\n",
             errSave: isEN ? "\\n[Error] Save the file first (File -> Save) before running!\\n" : "\\n[Błąd] Najpierw zapisz plik (Plik -> Zapisz) przed jego uruchomieniem!\\n",
             openMsg: isEN ? "\\n[EditCode] Opened: " : "\\n[EditCode] Otwarto: ",
-            saveMsg: isEN ? "\\n[EditCode] Saved: " : "\\n[EditCode] Zapisano: "
+            saveMsg: isEN ? "\\n[EditCode] Saved: " : "\\n[EditCode] Zapisano: ",
+            // Tłumaczenia okna zamykania
+            quitNormal: isEN ? "Are you sure you want to quit EditCode?" : "Czy na pewno chcesz zamknąć EditCode?",
+            quitUnsaved: isEN ? "You have unsaved changes!\\nAre you sure you want to quit without saving?" : "Masz niezapisane zmiany w kartach!\\nCzy na pewno chcesz wyjść bez zapisywania?",
+            cancelBtn: isEN ? "Cancel" : "Anuluj",
+            quitBtn: isEN ? "Quit" : "Zakończ"
         };
 
-        // Podpinanie tekstów
         document.getElementById('btn-run').innerText = UI.runBtn;
         document.getElementById('btn-stop').innerText = UI.stopBtn;
         document.getElementById('btn-open').innerText = UI.openBtn;
         document.getElementById('btn-save').innerText = UI.saveBtn;
         document.getElementById('btn-find').innerText = UI.findBtn;
         document.getElementById('terminal').innerText = UI.termReady;
+        
+        document.getElementById('btn-cancel').innerText = UI.cancelBtn;
+        document.getElementById('btn-confirm').innerText = UI.quitBtn;
 
-        // Aktywacja menu wewnątrz aplikacji tylko dla systemu Windows
         if (!isMac) {
             document.getElementById('win-menu').style.display = 'flex';
         }
 
-        // SYSTEM ZAKŁADEK (TABS)
         let tabs = [];
         let activeTabId = null;
         let tabIdCounter = 0;
@@ -195,7 +232,6 @@ HTML_CONTENT = """
             }
         }
 
-        // INICJALIZACJA MONACO EDITOR
         require.config({ paths: { 'vs': 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.40.0/min/vs' }});
         require(['vs/editor/editor.main'], function() {
             let initialCode = isEN ? '# Welcome to EditCode!' : '# Witaj w EditCode!';
@@ -315,6 +351,21 @@ HTML_CONTENT = """
             }
         });
 
+        function checkQuit() {
+            let hasUnsaved = tabs.some(t => !t.saved);
+            document.getElementById('exit-msg').innerText = hasUnsaved ? UI.quitUnsaved : UI.quitNormal;
+            document.getElementById('exit-icon').innerText = hasUnsaved ? '⛔' : 'ℹ️';
+            document.getElementById('exit-overlay').style.display = 'flex';
+        }
+
+        function hideQuit() {
+            document.getElementById('exit-overlay').style.display = 'none';
+        }
+
+        function confirmQuit() {
+            pywebview.api.force_quit();
+        }
+
     </script>
 </body>
 </html>
@@ -324,9 +375,15 @@ class BackendApi:
     def __init__(self):
         self.window = None
         self.process = None
+        self.allow_quit = False 
 
     def set_window(self, window):
         self.window = window
+
+    def force_quit(self):
+        self.allow_quit = True
+        if self.window:
+            threading.Timer(0.1, self.window.destroy).start()
 
     def print_terminal(self, text):
         if self.window:
@@ -369,42 +426,20 @@ class BackendApi:
             self.print_terminal(f"\n[{T['err']}] {T['err_save']} {e}\n")
             return None
 
-    def save_file_dialog(self, content, current_filepath):
-        filepath_to_save = current_filepath
-        if not filepath_to_save:
-            result = self.window.create_file_dialog(webview.SAVE_DIALOG)
-            if result and len(result) > 0:
-                filepath_to_save = result[0]
-            else:
-                return None
-
-        try:
-            with open(filepath_to_save, 'w', encoding='utf-8') as f:
-                f.write(content)
-            filename = os.path.basename(filepath_to_save)
-            return {'filepath': filepath_to_save, 'filename': filename}
-        except Exception as e:
-            self.print_terminal(f"\n[{T['err']}] {T['err_save']} {e}\n")
-            return None
-
     def run_code(self, filepath):
         if not filepath: return
-        
         abs_filepath = os.path.abspath(filepath)
         filename = os.path.basename(abs_filepath)
-        
         self.print_terminal(f"\n[EditCode] {T['run_msg']} {filename}\n")
         
         def execute():
             try:
                 env = os.environ.copy()
-                
                 if getattr(sys, 'frozen', False):
                     env.pop('PYTHONHOME', None)
                     env.pop('PYTHONPATH', None)
                     env.pop('DYLD_LIBRARY_PATH', None)
                     env.pop('LD_LIBRARY_PATH', None)
-                    
                     if platform.system() == 'Darwin':
                         env['PATH'] = '/usr/local/bin:/opt/homebrew/bin:' + env.get('PATH', '/usr/bin:/bin')
                         cmd = ['python3', abs_filepath]
@@ -422,7 +457,7 @@ class BackendApi:
                     stderr=subprocess.STDOUT, 
                     text=True, 
                     bufsize=1,
-                    env=env, 
+                    env=env,
                     cwd=os.path.dirname(abs_filepath)
                 )
                 
@@ -435,7 +470,7 @@ class BackendApi:
                 self.print_terminal(f"\n[{T['err']}] Nie udało się uruchomić procesu: {str(e)}\n")
 
         threading.Thread(target=execute, daemon=True).start()
-        
+
     def stop_code(self):
         if self.process and self.process.poll() is None:
             self.process.terminate()
@@ -453,7 +488,6 @@ def fix_macos_menu():
             if not main_menu: return
 
             main_menu.itemAtIndex_(0).setTitle_('EditCode')
-            
             target_title = T['file']
             plik_index = -1
             for i in range(main_menu.numberOfItems()):
@@ -474,7 +508,6 @@ def fix_macos_menu():
                 
                 main_menu.removeItemAtIndex_(plik_index)
                 main_menu.insertItem_atIndex_(plik_item, 1)
-
         except Exception as e:
             pass 
 
@@ -487,6 +520,14 @@ def fix_macos_menu():
 
     threading.Timer(0.5, delayed_execution).start()
 
+def on_closing():
+    if not api.allow_quit:
+        
+        threading.Timer(0.1, lambda: window.evaluate_js('checkQuit()')).start()
+        return False 
+    return True 
+
+
 if __name__ == '__main__':
     api = BackendApi()
     
@@ -497,17 +538,14 @@ if __name__ == '__main__':
         width=1100, 
         height=750,
         background_color='#1e1e1e',
-        confirm_close=True 
+        confirm_close=False 
     )
     api.set_window(window)
     
+    window.events.closing += on_closing
     window.events.loaded += fix_macos_menu
     
     loc = {
-        'global.quitConfirmation': 'Czy na pewno chcesz zamknąć EditCode?' if is_pl else 'Do you really want to quit EditCode?',
-        'global.ok': 'OK',
-        'global.cancel': 'Anuluj' if is_pl else 'Cancel',
-        'global.quit': 'Zamknij' if is_pl else 'Quit',
         'mac.menu.about': 'O programie EditCode' if is_pl else 'About EditCode',
         'mac.menu.services': 'Usługi' if is_pl else 'Services',
         'mac.menu.hide': 'Ukryj EditCode' if is_pl else 'Hide EditCode',
