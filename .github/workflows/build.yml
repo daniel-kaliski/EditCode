@@ -20,7 +20,7 @@ jobs:
     - name: Set up Python
       uses: actions/setup-python@v5
       with:
-        python-version: '3.11' 
+        python-version: '3.11'
 
     - name: Install dependencies
       run: |
@@ -30,16 +30,22 @@ jobs:
     - name: Build with PyInstaller
       run: pyinstaller --clean EditCode.spec
 
-    - name: Upload Windows Artifact
-      if: runner.os == 'Windows'
-      uses: actions/upload-artifact@v4
-      with:
-        name: EditCode-Windows
-        path: dist/EditCode.exe
+    - name: Prepare macOS Artifact
+      if: runner.os == 'macOS'
+      run: |
+        mkdir release_mac
+        mv dist/EditCode.app release_mac/
 
     - name: Upload macOS Artifact
       if: runner.os == 'macOS'
       uses: actions/upload-artifact@v4
       with:
         name: EditCode-macOS
-        path: dist/EditCode.app
+        path: release_mac/
+
+    - name: Upload Windows Artifact
+      if: runner.os == 'Windows'
+      uses: actions/upload-artifact@v4
+      with:
+        name: EditCode-Windows
+        path: dist/EditCode.exe
