@@ -18,7 +18,7 @@ import subprocess
 import threading
 import json
 import platform
-import time  
+import time
 
 is_pl = False
 try:
@@ -232,29 +232,33 @@ HTML_CONTENT = """
 
             if (!isEN) {
                 setInterval(function() {
-                    document.querySelectorAll('textarea[placeholder="Find"], input[placeholder="Find"]').forEach(function(e) { e.placeholder = 'Znajdź'; });
-                    document.querySelectorAll('textarea[placeholder="Replace"], input[placeholder="Replace"]').forEach(function(e) { e.placeholder = 'Zamień'; });
-                    document.querySelectorAll('.matchesCount').forEach(function(e) {
-                        if (e.innerText === 'No results') e.innerText = 'Brak wyników';
-                        else if (e.innerText.indexOf(' of ') !== -1) e.innerText = e.innerText.replace(' of ', ' z ');
-                    });
-
-                    const tooltips = [
-                        ['Toggle Replace mode', 'Przełącz tryb zamiany'], ['Toggle Replace', 'Przełącz tryb zamiany'],
-                        ['Replace All', 'Zamień wszystko'], ['Replace', 'Zamień'],
-                        ['Find in Selection', 'Znajdź w zaznaczeniu'], ['Find in selection', 'Znajdź w zaznaczeniu'],
-                        ['Previous match', 'Poprzedni wynik'], ['Next match', 'Następny wynik'],
-                        ['Close (Escape)', 'Zamknij (Escape)'], ['Match Case', 'Uwzględniaj wielkość liter'],
-                        ['Match Whole Word', 'Dopasuj całe słowo'], ['Use Regular Expression', 'Użyj wyrażeń regularnych'],
-                        ['Preserve Case', 'Zachowaj wielkość liter']
-                    ];
+                    let findWidget = document.querySelector('.find-widget');
                     
-                    document.querySelectorAll('[title]').forEach(function(e) {
-                        tooltips.forEach(function(t) {
-                            if (e.title.includes(t[0])) { e.title = e.title.replace(t[0], t[1]); }
+                    if (findWidget) {
+                        findWidget.querySelectorAll('textarea[placeholder="Find"], input[placeholder="Find"]').forEach(function(e) { e.placeholder = 'Znajdź'; });
+                        findWidget.querySelectorAll('textarea[placeholder="Replace"], input[placeholder="Replace"]').forEach(function(e) { e.placeholder = 'Zamień'; });
+                        findWidget.querySelectorAll('.matchesCount').forEach(function(e) {
+                            if (e.innerText === 'No results') e.innerText = 'Brak wyników';
+                            else if (e.innerText.indexOf(' of ') !== -1) e.innerText = e.innerText.replace(' of ', ' z ');
                         });
-                    });
-                }, 200);
+
+                        const tooltips = [
+                            ['Toggle Replace mode', 'Przełącz tryb zamiany'], ['Toggle Replace', 'Przełącz tryb zamiany'],
+                            ['Replace All', 'Zamień wszystko'], ['Replace', 'Zamień'],
+                            ['Find in Selection', 'Znajdź w zaznaczeniu'], ['Find in selection', 'Znajdź w zaznaczeniu'],
+                            ['Previous match', 'Poprzedni wynik'], ['Next match', 'Następny wynik'],
+                            ['Close (Escape)', 'Zamknij (Escape)'], ['Match Case', 'Uwzględniaj wielkość liter'],
+                            ['Match Whole Word', 'Dopasuj całe słowo'], ['Use Regular Expression', 'Użyj wyrażeń regularnych'],
+                            ['Preserve Case', 'Zachowaj wielkość liter']
+                        ];
+                        
+                        findWidget.querySelectorAll('[title]').forEach(function(e) {
+                            tooltips.forEach(function(t) {
+                                if (e.title.includes(t[0])) { e.title = e.title.replace(t[0], t[1]); }
+                            });
+                        });
+                    }
+                }, 1000); 
             }
 
             addTab('', initialCode, 'python');
@@ -475,7 +479,6 @@ def on_closing():
                     pass
                     
         threading.Thread(target=trigger_js, daemon=True).start()
-        
         return False
     return True
 
