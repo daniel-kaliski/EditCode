@@ -39,12 +39,7 @@ T = {
     'run_msg': "Uruchamianie:" if is_pl else "Running:",
     'done_msg': "Zakończono (Kod" if is_pl else "Finished (Code",
     'stop_msg': "Wymuszono zatrzymanie procesu." if is_pl else "Process forcefully stopped.",
-    'err': "Błąd" if is_pl else "Error",
-    'file': "Plik" if is_pl else "File",
-    'open': "Otwórz..." if is_pl else "Open...",
-    'save': "Zapisz" if is_pl else "Save",
-    'tools': "Narzędzia" if is_pl else "Tools",
-    'find': "Szukaj" if is_pl else "Find"
+    'err': "Błąd" if is_pl else "Error"
 }
 
 HTML_CONTENT = """
@@ -56,15 +51,14 @@ HTML_CONTENT = """
         :root { --bg: #121212; --panel: #1e1e1e; --text: #fff; --accent: #63bdf2; }
         body, html { margin: 0; padding: 0; height: 100%; display: flex; flex-direction: column; background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; overflow: hidden; }
         
-        #toolbar { background: var(--panel); padding: 10px 15px; display: flex; gap: 10px; align-items: center; }
-        button { background: #2d2d2d; color: white; border: none; padding: 6px 14px; border-radius: 6px; cursor: pointer; font-weight: bold; transition: 0.2s; font-size: 13px; }
-        button:hover { background: #3d3d3d; }
-        .btn-run { color: #4CAF50; display: flex; align-items: center; gap: 5px; }
-        .btn-stop { color: #F44336; }
+        #toolbar { background: var(--panel); padding: 10px 15px; display: flex; gap: 6px; align-items: center; border-bottom: 1px solid #333; }
         
-        #win-menu { display: none; gap: 8px; margin-right: 15px; border-right: 1px solid #333; padding-right: 15px; }
-        .btn-menu { background: transparent; color: #ccc; font-weight: normal; }
-        .btn-menu:hover { background: #333; color: #fff; }
+        button.tool-btn { 
+            border: none; padding: 6px 14px; border-radius: 6px; cursor: pointer; 
+            font-size: 16px; transition: 0.2s; background: transparent; 
+            display: flex; align-items: center; justify-content: center; color: #ffffff; 
+        }
+        button.tool-btn:hover { background: rgba(255, 255, 255, 0.1); color: #cccccc; }
         
         #tab-bar { display: flex; background: #151515; overflow-x: auto; border-bottom: 1px solid #333; height: 38px; }
         #tab-bar::-webkit-scrollbar { display: none; }
@@ -81,39 +75,36 @@ HTML_CONTENT = """
         #editor-container { flex: 1; position: relative; background: var(--bg); }
         #terminal { height: 200px; background: #0a0a0a; color: #00ff00; padding: 15px; overflow-y: auto; font-family: 'Menlo', 'Consolas', monospace; font-size: 12px; border-top: 1px solid #333; white-space: pre-wrap; word-wrap: break-word; }
         
-        /* IDEALNIE WYJUSTOWANE OKNO ZAMYKANIA (MODAL) */
         #exit-overlay { 
             display: none; position: absolute; top: 0; left: 0; width: 100%; height: 100%; 
             background: rgba(0, 0, 0, 0.65); z-index: 9999; 
             justify-content: center; align-items: center; backdrop-filter: blur(2px);
         }
         .exit-modal { 
-            background: var(--panel); border: 1px solid #444; border-radius: 8px; 
-            padding: 22px 26px; width: 340px; box-shadow: 0 15px 35px rgba(0,0,0,0.6); 
+            background: var(--panel); border: 1px solid #444; border-radius: 12px; 
+            padding: 30px; width: 320px; box-shadow: 0 15px 35px rgba(0,0,0,0.6); 
+            text-align: center; 
         }
         .exit-content { 
-            display: flex; align-items: center; /* Idealne wyśrodkowanie ikony z tekstem */
-            gap: 18px; margin-bottom: 25px; 
+            display: flex; flex-direction: column; align-items: center; justify-content: center; 
+            gap: 15px; margin-bottom: 25px; 
         }
-        .exit-icon { font-size: 32px; line-height: 1; }
-        .exit-text { font-size: 14px; line-height: 1.5; text-align: left; /* Czytelne i równo rozłożone */ }
-        .exit-buttons { display: flex; justify-content: flex-end; gap: 12px; }
-        .btn-cancel { background: #444; font-weight: normal; }
+        .exit-icon { font-size: 45px; line-height: 1; }
+        .exit-text { font-size: 15px; line-height: 1.5; color: #fff; }
+        .exit-buttons { display: flex; justify-content: center; gap: 12px; }
+        
+        .btn-modal { border: none; padding: 8px 20px; border-radius: 6px; cursor: pointer; font-size: 14px; transition: 0.2s; font-weight: bold; }
+        .btn-cancel { background: #444; color: white; }
         .btn-cancel:hover { background: #555; }
-        .btn-confirm { background: #F44336; }
-        .btn-confirm:hover { background: #D32F2F; }
+        .btn-confirm { background: #F44336; color: white; }
+        .btn-confirm:hover { background: #d32f2f; }
     </style>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.40.0/min/vs/loader.min.js"></script>
 </head>
 <body>
     <div id="toolbar">
-        <div id="win-menu">
-            <button class="btn-menu" onclick="openFile()" id="btn-open">Otwórz</button>
-            <button class="btn-menu" onclick="saveFile()" id="btn-save">Zapisz</button>
-            <button class="btn-menu" onclick="triggerFind()" id="btn-find">Szukaj</button>
-        </div>
-        <button class="btn-run" onclick="runCode()" id="btn-run">▶ Uruchom</button>
-        <button class="btn-stop" onclick="stopCode()" id="btn-stop">■ Zatrzymaj</button>
+        <button class="tool-btn" onclick="runCode()" id="btn-run" title="Uruchom (⌘Enter)"></button>
+        <button class="tool-btn" onclick="stopCode()" id="btn-stop" title="Zatrzymaj"></button>
     </div>
     
     <div id="tab-bar"></div>
@@ -124,11 +115,11 @@ HTML_CONTENT = """
         <div class="exit-modal">
             <div class="exit-content">
                 <div class="exit-icon" id="exit-icon">⚠️</div>
-                <div class="exit-text" id="exit-msg">Czy na pewno chcesz zamknąć program?</div>
+                <div class="exit-text" id="exit-msg">Czy na pewno chcesz zamknąć program EditCode?</div>
             </div>
             <div class="exit-buttons">
-                <button class="btn-cancel" onclick="hideQuit()" id="btn-cancel">Anuluj</button>
-                <button class="btn-confirm" onclick="confirmQuit()" id="btn-confirm">Zakończ</button>
+                <button class="btn-modal btn-cancel" onclick="hideQuit()" id="btn-cancel">Anuluj</button>
+                <button class="btn-modal btn-confirm" onclick="confirmQuit()" id="btn-confirm">Zakończ</button>
             </div>
         </div>
     </div>
@@ -142,35 +133,27 @@ HTML_CONTENT = """
             newFile: isEN ? "Untitled" : "Nowy plik",
             closeTab: isEN ? "Close tab" : "Zamknij kartę",
             unsaved: isEN ? "Tab '{0}' has unsaved changes. Close anyway?" : "Karta '{0}' ma niezapisane zmiany. Zamknąć mimo to?",
-            runBtn: isEN ? "▶ Run" : "▶ Uruchom",
-            stopBtn: isEN ? "■ Stop" : "■ Zatrzymaj",
-            openBtn: isEN ? "Open" : "Otwórz",
-            saveBtn: isEN ? "Save" : "Zapisz",
-            findBtn: isEN ? "Find" : "Szukaj",
+            runBtn: "▶", 
+            stopBtn: "■",
             termReady: isEN ? "> EditCode Terminal ready...\\n\\n" : "> Terminal EditCode gotowy...\\n\\n",
             errSave: isEN ? "\\n[Error] Save the file first (File -> Save) before running!\\n" : "\\n[Błąd] Najpierw zapisz plik (Plik -> Zapisz) przed jego uruchomieniem!\\n",
             openMsg: isEN ? "\\n[EditCode] Opened: " : "\\n[EditCode] Otwarto: ",
             saveMsg: isEN ? "\\n[EditCode] Saved: " : "\\n[EditCode] Zapisano: ",
-            // Tłumaczenia okna zamykania
-            quitNormal: isEN ? "Are you sure you want to quit EditCode?" : "Czy na pewno chcesz zamknąć EditCode?",
-            quitUnsaved: isEN ? "You have unsaved changes!\\nAre you sure you want to quit without saving?" : "Masz niezapisane zmiany w kartach!\\nCzy na pewno chcesz wyjść bez zapisywania?",
+            quitNormal: isEN ? "Are you sure you want to quit EditCode?" : "Czy na pewno chcesz zamknąć program EditCode?",
+            quitUnsaved: isEN ? "You have unsaved changes!\\nAre you sure you want to quit?" : "Masz niezapisane zmiany!\\nCzy na pewno chcesz zakończyć bez zapisywania?",
             cancelBtn: isEN ? "Cancel" : "Anuluj",
             quitBtn: isEN ? "Quit" : "Zakończ"
         };
 
+        document.getElementById('btn-run').title = isEN ? (isMac ? "Run (⌘Enter)" : "Run (Ctrl+Enter)") : (isMac ? "Uruchom (⌘Enter)" : "Uruchom (Ctrl+Enter)");
+        document.getElementById('btn-stop').title = isEN ? "Stop" : "Zatrzymaj";
+
         document.getElementById('btn-run').innerText = UI.runBtn;
         document.getElementById('btn-stop').innerText = UI.stopBtn;
-        document.getElementById('btn-open').innerText = UI.openBtn;
-        document.getElementById('btn-save').innerText = UI.saveBtn;
-        document.getElementById('btn-find').innerText = UI.findBtn;
         document.getElementById('terminal').innerText = UI.termReady;
         
         document.getElementById('btn-cancel').innerText = UI.cancelBtn;
         document.getElementById('btn-confirm').innerText = UI.quitBtn;
-
-        if (!isMac) {
-            document.getElementById('win-menu').style.display = 'flex';
-        }
 
         let tabs = [];
         let activeTabId = null;
@@ -257,33 +240,24 @@ HTML_CONTENT = """
                 setInterval(function() {
                     document.querySelectorAll('textarea[placeholder="Find"], input[placeholder="Find"]').forEach(function(e) { e.placeholder = 'Znajdź'; });
                     document.querySelectorAll('textarea[placeholder="Replace"], input[placeholder="Replace"]').forEach(function(e) { e.placeholder = 'Zamień'; });
-                    
                     document.querySelectorAll('.matchesCount').forEach(function(e) {
                         if (e.innerText === 'No results') e.innerText = 'Brak wyników';
                         else if (e.innerText.indexOf(' of ') !== -1) e.innerText = e.innerText.replace(' of ', ' z ');
                     });
 
                     const tooltips = [
-                        ['Toggle Replace mode', 'Przełącz tryb zamiany'],
-                        ['Toggle Replace', 'Przełącz tryb zamiany'],
-                        ['Replace All', 'Zamień wszystko'],
-                        ['Replace', 'Zamień'],
-                        ['Find in Selection', 'Znajdź w zaznaczeniu'],
-                        ['Find in selection', 'Znajdź w zaznaczeniu'],
-                        ['Previous match', 'Poprzedni wynik'],
-                        ['Next match', 'Następny wynik'],
-                        ['Close (Escape)', 'Zamknij (Escape)'],
-                        ['Match Case', 'Uwzględniaj wielkość liter'],
-                        ['Match Whole Word', 'Dopasuj całe słowo'],
-                        ['Use Regular Expression', 'Użyj wyrażeń regularnych'],
+                        ['Toggle Replace mode', 'Przełącz tryb zamiany'], ['Toggle Replace', 'Przełącz tryb zamiany'],
+                        ['Replace All', 'Zamień wszystko'], ['Replace', 'Zamień'],
+                        ['Find in Selection', 'Znajdź w zaznaczeniu'], ['Find in selection', 'Znajdź w zaznaczeniu'],
+                        ['Previous match', 'Poprzedni wynik'], ['Next match', 'Następny wynik'],
+                        ['Close (Escape)', 'Zamknij (Escape)'], ['Match Case', 'Uwzględniaj wielkość liter'],
+                        ['Match Whole Word', 'Dopasuj całe słowo'], ['Use Regular Expression', 'Użyj wyrażeń regularnych'],
                         ['Preserve Case', 'Zachowaj wielkość liter']
                     ];
                     
                     document.querySelectorAll('[title]').forEach(function(e) {
                         tooltips.forEach(function(t) {
-                            if (e.title.includes(t[0])) {
-                                e.title = e.title.replace(t[0], t[1]);
-                            }
+                            if (e.title.includes(t[0])) { e.title = e.title.replace(t[0], t[1]); }
                         });
                     });
                 }, 200);
@@ -300,10 +274,7 @@ HTML_CONTENT = """
 
         function openFile() {
             pywebview.api.open_file_dialog().then(function(result) {
-                if(result) {
-                    addTab(result.filepath, result.content, result.lang);
-                    appendTerminal(UI.openMsg + result.filepath + "\\n");
-                }
+                if(result) { addTab(result.filepath, result.content, result.lang); appendTerminal(UI.openMsg + result.filepath + "\\n"); }
             });
         }
 
@@ -311,31 +282,18 @@ HTML_CONTENT = """
             if (activeTabId === null) return;
             let tab = tabs.find(t => t.id === activeTabId);
             tab.content = editor.getValue();
-            
             pywebview.api.save_file_dialog(tab.content, tab.filepath).then(function(result) {
-                if(result) {
-                    tab.filepath = result.filepath;
-                    tab.filename = result.filename;
-                    tab.saved = true;
-                    renderTabs();
-                    appendTerminal(UI.saveMsg + tab.filename + "\\n");
-                }
+                if(result) { tab.filepath = result.filepath; tab.filename = result.filename; tab.saved = true; renderTabs(); appendTerminal(UI.saveMsg + tab.filename + "\\n"); }
             });
         }
 
-        function triggerFind() {
-            if (editor) { editor.trigger('keyboard', 'actions.find', null); }
-        }
-
+        function triggerFind() { if (editor) { editor.trigger('keyboard', 'actions.find', null); } }
+        
         function runCode() {
             if (activeTabId === null) return;
             let tab = tabs.find(t => t.id === activeTabId);
             tab.content = editor.getValue();
-            
-            if (!tab.saved || !tab.filepath) {
-                appendTerminal(UI.errSave);
-                return;
-            }
+            if (!tab.saved || !tab.filepath) { appendTerminal(UI.errSave); return; }
             pywebview.api.run_code(tab.filepath);
         }
 
@@ -357,15 +315,8 @@ HTML_CONTENT = """
             document.getElementById('exit-icon').innerText = hasUnsaved ? '⛔' : 'ℹ️';
             document.getElementById('exit-overlay').style.display = 'flex';
         }
-
-        function hideQuit() {
-            document.getElementById('exit-overlay').style.display = 'none';
-        }
-
-        function confirmQuit() {
-            pywebview.api.force_quit();
-        }
-
+        function hideQuit() { document.getElementById('exit-overlay').style.display = 'none'; }
+        function confirmQuit() { pywebview.api.force_quit(); }
     </script>
 </body>
 </html>
@@ -382,14 +333,12 @@ class BackendApi:
 
     def force_quit(self):
         self.allow_quit = True
+        self.stop_code()
         
-        self.stop_code() 
-        
-        if platform.system() == 'Windows':
-            os._exit(0)
-        else:
-            if self.window:
-                threading.Timer(0.1, self.window.destroy).start()
+        if self.window:
+            self.window.destroy()
+            
+        os._exit(0)
 
     def print_terminal(self, text):
         if self.window:
@@ -482,6 +431,7 @@ class BackendApi:
             self.process.terminate()
             self.print_terminal(f"\n[EditCode] {T['stop_msg']}\n")
 
+
 def fix_macos_menu():
     if platform.system() != 'Darwin':
         return
@@ -494,44 +444,24 @@ def fix_macos_menu():
             if not main_menu: return
 
             main_menu.itemAtIndex_(0).setTitle_('EditCode')
-            target_title = T['file']
-            plik_index = -1
-            for i in range(main_menu.numberOfItems()):
-                if main_menu.itemAtIndex_(i).title() == target_title:
-                    plik_index = i
-                    break
             
-            if plik_index > 1:
-                plik_item = main_menu.itemAtIndex_(plik_index)
-                edit_item = main_menu.itemAtIndex_(1)
-                view_item = main_menu.itemAtIndex_(2)
-                
-                if is_pl:
-                    edit_item.setTitle_('Edycja')
-                    if edit_item.submenu(): edit_item.submenu().setTitle_('Edycja')
-                    view_item.setTitle_('Widok')
-                    if view_item.submenu(): view_item.submenu().setTitle_('Widok')
-                
-                main_menu.removeItemAtIndex_(plik_index)
-                main_menu.insertItem_atIndex_(plik_item, 1)
+            total_items = main_menu.numberOfItems()
+            if total_items > 4:
+                for i in range(total_items - 4, 0, -1):
+                    main_menu.removeItemAtIndex_(i)
+
         except Exception as e:
             pass 
 
-    def delayed_execution():
-        try:
-            from PyObjCTools import AppHelper
-            AppHelper.callAfter(apply_fix)
-        except:
-            apply_fix()
-
-    threading.Timer(0.5, delayed_execution).start()
+    from PyObjCTools import AppHelper
+    for delay in [0.2, 0.8, 1.5, 3.0]:
+        threading.Timer(delay, lambda: AppHelper.callAfter(apply_fix)).start()
 
 def on_closing():
     if not api.allow_quit:
-        
-        threading.Timer(0.1, lambda: window.evaluate_js('checkQuit()')).start()
-        return False 
-    return True 
+        threading.Timer(0.1, lambda: api.window.evaluate_js('checkQuit()')).start()
+        return False
+    return True
 
 
 if __name__ == '__main__':
@@ -563,16 +493,22 @@ if __name__ == '__main__':
     CMD = '⌘' if platform.system() == 'Darwin' else 'Ctrl'
     
     menu_items = [
-        Menu(T['file'], [
-            MenuAction(f"{T['open']}  ({CMD}O)", lambda: window.evaluate_js('openFile()')),
-            MenuAction(f"{T['save']}  ({CMD}S)", lambda: window.evaluate_js('saveFile()'))
+        Menu('Plik' if is_pl else 'File', [
+            MenuAction(f"Otwórz  ({CMD}O)", lambda: window.evaluate_js('openFile()')),
+            MenuAction(f"Zapisz  ({CMD}S)", lambda: window.evaluate_js('saveFile()'))
         ]),
-        Menu(T['tools'], [
-            MenuAction(f"{T['find']}  ({CMD}F)", lambda: window.evaluate_js('triggerFind()'))
+        Menu('Edycja' if is_pl else 'Edit', [
+            MenuAction(f"Cofnij  ({CMD}Z)", lambda: window.evaluate_js('if(editor) editor.trigger("keyboard", "undo", null);')),
+            MenuAction(f"Ponów  ({CMD}Y)", lambda: window.evaluate_js('if(editor) editor.trigger("keyboard", "redo", null);')),
+            MenuAction(f"Kopiuj  ({CMD}C)", lambda: window.evaluate_js('if(editor) editor.trigger("keyboard", "editor.action.clipboardCopyAction", null);')),
+            MenuAction(f"Wytnij  ({CMD}X)", lambda: window.evaluate_js('if(editor) editor.trigger("keyboard", "editor.action.clipboardCutAction", null);')),
+            MenuAction(f"Wklej  ({CMD}V)", lambda: window.evaluate_js('if(editor) editor.trigger("keyboard", "editor.action.clipboardPasteAction", null);')),
+            MenuAction(f"Znajdź  ({CMD}F)", lambda: window.evaluate_js('triggerFind()'))
+        ]),
+        Menu('Uruchom' if is_pl else 'Run', [
+            MenuAction(f"Uruchom  ({CMD}Enter)", lambda: window.evaluate_js('runCode()')),
+            MenuAction("Zatrzymaj" if is_pl else "Stop", lambda: window.evaluate_js('stopCode()'))
         ])
     ]
 
-    if platform.system() == 'Darwin':
-        webview.start(menu=menu_items, localization=loc, debug=False)
-    else:
-        webview.start(localization=loc, debug=False)
+    webview.start(menu=menu_items, localization=loc, debug=False)
