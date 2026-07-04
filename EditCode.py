@@ -1,870 +1,515 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-
-# ==============================================================================
-# Nazwa pliku: EditCode.py
-# 
-# Copyright (c) 2026 Daniel Kaliski
-# Ten kod jest objęty licencją GNU GENERAL PUBLIC LICENSE GPL-3.0.
-# Pełny tekst licencji znajduje się w pliku LICENSE lub na stronie:
-# https://opensource.org/license/gpl-3.0
-# ==============================================================================
-
+import webview
+from webview.menu import Menu, MenuAction
 import sys
 import os
-import platform
+import subprocess
+import threading
 import json
-import base64
-import tempfile
+import platform
 
-os.environ['QT_MAC_WANTS_LAYER'] = '1'
-
-from PyQt6.QtWidgets import (QApplication, QMainWindow, QFileDialog, 
-                             QVBoxLayout, QWidget, QSplitter, 
-                             QTreeView, QPlainTextEdit, QLabel,
-                             QTabWidget, QDialog, QPushButton, QHBoxLayout, QFrame,
-                             QAbstractButton, QMessageBox, QTabBar, QSizePolicy) 
-from PyQt6.QtWebEngineWidgets import QWebEngineView
-from PyQt6.QtWebEngineCore import QWebEnginePage
-from PyQt6.QtGui import QFileSystemModel, QFont, QAction, QColor, QPalette
-from PyQt6.QtCore import Qt, QProcess, QLocale, QEvent
-from PyQt6.QtGui import QFileSystemModel, QFont, QAction, QColor, QPalette, QIcon
-
-SVG_CLOSE = '<svg viewBox="0 0 10 10" xmlns="http://www.w3.org/2000/svg"><path d="M 2 2 L 8 8 M 8 2 L 2 8" stroke="#888888" stroke-width="1.5" stroke-linecap="round"/></svg>'
-SVG_CLOSE_HOVER = '<svg viewBox="0 0 10 10" xmlns="http://www.w3.org/2000/svg"><path d="M 2 2 L 8 8 M 8 2 L 2 8" stroke="#ffffff" stroke-width="1.5" stroke-linecap="round"/></svg>'
-
-temp_dir = tempfile.gettempdir()
-close_icon_path = os.path.join(temp_dir, "editcode_close.svg").replace('\\', '/')
-close_hover_icon_path = os.path.join(temp_dir, "editcode_close_hover.svg").replace('\\', '/')
-
-with open(close_icon_path, "w", encoding="utf-8") as f: 
-    f.write(SVG_CLOSE)
-with open(close_hover_icon_path, "w", encoding="utf-8") as f: 
-    f.write(SVG_CLOSE_HOVER)
-
-def detect_language():
-    lang_code = QLocale.system().name()
-    return 'pl' if lang_code.lower().startswith('pl') else 'en'
-
-LANG = detect_language()
+# ==========================================
+# 0. PANCERNE WYKRYWANIE JĘZYKA (macOS & Windows)
+# ==========================================
+is_pl = False
+try:
+    if platform.system() == 'Darwin':
+        out = subprocess.check_output(['defaults', 'read', '-g', 'AppleLanguages']).decode('utf-8')
+        if 'pl' in out:
+            is_pl = True
+    else:
+        import locale
+        lang = os.environ.get('LANG', '') or locale.getdefaultlocale()[0] or 'en'
+        if lang.lower().startswith('pl'):
+            is_pl = True
+except:
+    pass
 
 T = {
-    'pl': {
-        'edit': 'Edycja', 'find': 'Znajdź',
-        'file': 'Plik', 'new': 'Nowy', 'open_file': 'Otwórz plik...',
-        'open_folder': 'Otwórz folder projektu...', 'save': 'Zapisz',
-        'exit': 'Wyjdź', 'tools': 'Narzędzia', 'run': '▶ Uruchom', 'stop': '■ Zatrzymaj',
-        'help': 'Pomoc', 'about': 'O programie EditCode',
-        'new_file': 'Nowy plik', 'terminal': ' Terminal',
-        'unsaved_title': 'Niezapisane zmiany',
-        'unsaved_tab': "Karta '{}' zawiera niezapisane zmiany.\nCzy na pewno chcesz ją zamknąć bez zapisu?",
-        'unsaved_exit': 'Masz niezapisane pliki. Wyjść bez zapisywania?',
-        'save_before_run': 'Zapisz plik przed uruchomieniem.', 'error': 'Błąd',
-        'yes': 'Tak', 'no': 'Nie', 'cancel': 'Anuluj', 'ok': 'OK',
-        'select_folder': 'Wybierz folder projektu', 'all_files': 'Wszystkie pliki (*)',
-        'welcome': '# Witaj w EditCode!\n',
-        'run_msg': '\n[EditCode] Uruchamianie: {}\n',
-        'stop_msg': '\n[EditCode] Wymuszono zatrzymanie procesu.\n',
-        'no_run_support': '\n--- Brak obsługi uruchamiania dla rozszerzenia {} ---\n',
-        'doc_def': 'Definiuje nową funkcję', 'doc_print': 'Wypisuje tekst na konsolę',
-        'doc_if': 'Główny blok uruchomieniowy skryptu', 'doc_for': 'Pętla for',
-        'close_tab_btn': 'Zamknij zakładkę',
-        
-        'open_error': 'Nie udało się otworzyć pliku:\n{}',
-        'save_error': 'Nie udało się zapisać pliku:\n{}',
-        'binary_error': 'Tego pliku nie można otworzyć w edytorze kodu.'
-    },
-    'en': {
-        'edit': 'Edit', 'find': 'Find',
-        'file': 'File', 'new': 'New', 'open_file': 'Open File...',
-        'open_folder': 'Open Folder...', 'save': 'Save',
-        'exit': 'Exit', 'tools': 'Tools', 'run': '▶ Run', 'stop': '■ Stop',
-        'help': 'Help', 'about': 'About EditCode',
-        'new_file': 'Untitled', 'terminal': ' Terminal',
-        'unsaved_title': 'Unsaved Changes',
-        'unsaved_tab': "Tab '{}' has unsaved changes.\nAre you sure you want to close it?",
-        'unsaved_exit': 'You have unsaved files. Exit without saving?',
-        'save_before_run': 'Save the file before running.', 'error': 'Error',
-        'yes': 'Yes', 'no': 'No', 'cancel': 'Cancel', 'ok': 'OK',
-        'select_folder': 'Select Project Folder', 'all_files': 'All Files (*)',
-        'welcome': '# Welcome to EditCode!\n',
-        'run_msg': '\n[EditCode] Running: {}\n',
-        'stop_msg': '\n[EditCode] Process forcefully stopped.\n',
-        'no_run_support': '\n--- No run support for {} ---\n',
-        'doc_def': 'Defines a new function', 'doc_print': 'Prints text to console',
-        'doc_if': 'Main execution block', 'doc_for': 'For loop',
-        'close_tab_btn': 'Close Tab',
-        
-        'open_error': 'Could not open file:\n{}',
-        'save_error': 'Could not save file:\n{}',
-        'binary_error': 'This file cannot be opened in the code editor.'
-    }
-}[LANG]
+    'err_open': "Nie można otworzyć pliku:" if is_pl else "Cannot open file:",
+    'err_save': "Nie można zapisać pliku:" if is_pl else "Cannot save file:",
+    'run_msg': "Uruchamianie:" if is_pl else "Running:",
+    'done_msg': "Zakończono (Kod" if is_pl else "Finished (Code",
+    'stop_msg': "Wymuszono zatrzymanie procesu." if is_pl else "Process forcefully stopped.",
+    'err': "Błąd" if is_pl else "Error",
+    'file': "Plik" if is_pl else "File",
+    'open': "Otwórz..." if is_pl else "Open...",
+    'save': "Zapisz" if is_pl else "Save",
+    'tools': "Narzędzia" if is_pl else "Tools",
+    'find': "Szukaj" if is_pl else "Find"
+}
 
-class CustomDialog(QDialog):
-    def __init__(self, title, message, parent=None, buttons="yes_no"):
-        super().__init__(parent)
-        self.setWindowTitle(title)
-        self.setWindowFlags(Qt.WindowType.Dialog | Qt.WindowType.FramelessWindowHint)
-        self.setStyleSheet("""
-            QDialog { background-color: #252525; border: 1px solid #555555; }
-            QLabel { color: #ffffff; font-size: 12px; }
-            QPushButton { 
-                background-color: #3a3a3a; color: #ffffff; 
-                border: 1px solid #555555; border-radius: 4px; padding: 6px 16px; 
-            }
-            QPushButton:hover { background-color: #4a4a4a; }
-            QPushButton:pressed { background-color: #2a2a2a; }
-        """)
-        
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(20, 20, 20, 20)
-        layout.setSpacing(20)
-        
-        msg_label = QLabel(message)
-        layout.addWidget(msg_label)
-        
-        btn_layout = QHBoxLayout()
-        btn_layout.addStretch() 
-        
-        if buttons == "yes_no":
-            yes_btn = QPushButton(T['yes'])
-            no_btn = QPushButton(T['no'])
-            yes_btn.clicked.connect(lambda: self.done(1))
-            no_btn.clicked.connect(lambda: self.done(0))
-            btn_layout.addWidget(yes_btn)
-            btn_layout.addWidget(no_btn)
-        elif buttons == "ok":
-            ok_btn = QPushButton(T['ok'])
-            ok_btn.clicked.connect(lambda: self.done(1))
-            btn_layout.addWidget(ok_btn)
-            
-        layout.addLayout(btn_layout)
-
-MONACO_HTML = """
+# ==========================================
+# 1. FRONTEND: INTERFEJS Z ZAKŁADKAMI (HTML/JS)
+# ==========================================
+# ==========================================
+# 1. FRONTEND: INTERFEJS Z ZAKŁADKAMI (HTML/JS)
+# ==========================================
+HTML_CONTENT = """
 <!DOCTYPE html>
-<html>
+<html lang="pl">
 <head>
-    <meta http-equiv="Content-Type" content="text/html;charset=utf-8" />
-    <style> body, html { margin: 0; padding: 0; height: 100%; overflow: hidden; background-color: #1e1e1e; } </style>
+    <meta charset="UTF-8">
+    <style>
+        :root { --bg: #121212; --panel: #1e1e1e; --text: #fff; --accent: #63bdf2; }
+        body, html { margin: 0; padding: 0; height: 100%; display: flex; flex-direction: column; background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; overflow: hidden; }
+        
+        #toolbar { background: var(--panel); padding: 10px 15px; display: flex; gap: 10px; align-items: center; }
+        button { background: #2d2d2d; color: white; border: none; padding: 6px 14px; border-radius: 6px; cursor: pointer; font-weight: bold; transition: 0.2s; font-size: 13px; }
+        button:hover { background: #3d3d3d; }
+        .btn-run { color: #4CAF50; display: flex; align-items: center; gap: 5px; }
+        .btn-stop { color: #F44336; }
+        
+        #tab-bar { display: flex; background: #151515; overflow-x: auto; border-bottom: 1px solid #333; height: 38px; }
+        #tab-bar::-webkit-scrollbar { display: none; }
+        
+        .tab { padding: 0 14px; background: #1a1a1a; color: #888; border-right: 1px solid #333; cursor: pointer; display: flex; align-items: center; font-size: 13px; min-width: 120px; max-width: 250px; white-space: nowrap; overflow: hidden; border-top: 2px solid transparent; box-sizing: border-box; height: 100%; }
+        .tab.active { background: var(--bg); color: #fff; border-top: 2px solid var(--accent); }
+        
+        .tab-close { font-size: 16px; cursor: pointer; border-radius: 4px; width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; margin-right: 8px; margin-left: 0; transition: 0.2s; }
+        .tab-close:hover { background: #444; color: #f44336; }
+        
+        .tab-add { padding: 0 16px; cursor: pointer; color: #888; font-size: 18px; display: flex; align-items: center; height: 100%; font-weight: bold; }
+        .tab-add:hover { color: #fff; }
+        
+        #editor-container { flex: 1; position: relative; background: var(--bg); }
+        #terminal { height: 200px; background: #0a0a0a; color: #00ff00; padding: 15px; overflow-y: auto; font-family: 'Menlo', 'Consolas', monospace; font-size: 12px; border-top: 1px solid #333; white-space: pre-wrap; word-wrap: break-word; }
+    </style>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.40.0/min/vs/loader.min.js"></script>
 </head>
 <body>
-    <div id="editor" style="width: 100%; height: 100%;"></div>
+    <div id="toolbar">
+        <button class="btn-run" onclick="runCode()" id="btn-run">▶ Uruchom</button>
+        <button class="btn-stop" onclick="stopCode()" id="btn-stop">■ Zatrzymaj</button>
+    </div>
+    
+    <div id="tab-bar"></div>
+    <div id="editor-container" id="editor"></div>
+    <div id="terminal"></div>
+
     <script>
-        function b64DecodeUnicode(str) {
-            if (!str) return "";
-            return decodeURIComponent(atob(str).split('').map(function(c) {
-                return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
-            }).join(''));
+        // TŁUMACZENIA JS
+        const userLang = navigator.language || navigator.userLanguage;
+        const isEN = !userLang.toLowerCase().startsWith('pl');
+        
+        const UI = {
+            newFile: isEN ? "Untitled" : "Nowy plik",
+            closeTab: isEN ? "Close tab" : "Zamknij kartę",
+            unsaved: isEN ? "Tab '{0}' has unsaved changes. Close anyway?" : "Karta '{0}' ma niezapisane zmiany. Zamknąć mimo to?",
+            runBtn: isEN ? "▶ Run" : "▶ Uruchom",
+            stopBtn: isEN ? "■ Stop" : "■ Zatrzymaj",
+            termReady: isEN ? "> EditCode Terminal ready...\\n\\n" : "> Terminal EditCode gotowy...\\n\\n",
+            errSave: isEN ? "\\n[Error] Save the file first (File -> Save) before running!\\n" : "\\n[Błąd] Najpierw zapisz plik (Plik -> Zapisz) przed jego uruchomieniem!\\n",
+            openMsg: isEN ? "\\n[EditCode] Opened: " : "\\n[EditCode] Otwarto: ",
+            saveMsg: isEN ? "\\n[EditCode] Saved: " : "\\n[EditCode] Zapisano: "
+        };
+
+        document.getElementById('btn-run').innerText = UI.runBtn;
+        document.getElementById('btn-stop').innerText = UI.stopBtn;
+        document.getElementById('terminal').innerText = UI.termReady;
+
+        // SYSTEM ZAKŁADEK (TABS)
+        let tabs = [];
+        let activeTabId = null;
+        let tabIdCounter = 0;
+        let isSwitching = false;
+        var editor;
+
+        function renderTabs() {
+            let html = '';
+            tabs.forEach(t => {
+                let title = t.filename + (t.saved ? '' : ' *');
+                let fullPath = t.filepath || UI.newFile;
+                
+                html += `<div class="tab ${t.id === activeTabId ? 'active' : ''}" onclick="switchTab(${t.id})" title="${fullPath}">
+                            <span class="tab-close" onclick="event.stopPropagation(); closeTab(${t.id})" title="${UI.closeTab}">×</span>
+                            <span>${title}</span>
+                         </div>`;
+            });
+            html += `<div class="tab-add" onclick="addTab('', '', 'python')" title="${UI.newFile}">+</div>`;
+            document.getElementById('tab-bar').innerHTML = html;
         }
 
-        require.config({ paths: { 'vs': 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.40.0/min/vs' }});
-        
-        // ZMIANA: Unikalna nazwa zmiennej zabezpieczająca przed konfliktem z <div id="editor">
-        window.myEditor = null; 
+        function addTab(filepath, content, lang) {
+            let id = tabIdCounter++;
+            let filename = filepath ? filepath.split('/').pop().split('\\\\').pop() : UI.newFile;
+            tabs.push({ id, filepath, filename, content, lang, saved: true });
+            switchTab(id);
+        }
 
+        function switchTab(id) {
+            if (activeTabId !== null && editor) {
+                let activeTab = tabs.find(t => t.id === activeTabId);
+                if (activeTab) activeTab.content = editor.getValue();
+            }
+            activeTabId = id;
+            let tab = tabs.find(t => t.id === id);
+            if (tab && editor) {
+                isSwitching = true;
+                editor.setValue(tab.content);
+                monaco.editor.setModelLanguage(editor.getModel(), tab.lang);
+                isSwitching = false;
+            }
+            renderTabs();
+        }
+
+        function closeTab(id) {
+            let tab = tabs.find(t => t.id === id);
+            if (!tab.saved) {
+                let msg = UI.unsaved.replace('{0}', tab.filename);
+                if (!confirm(msg)) return;
+            }
+            tabs = tabs.filter(t => t.id !== id);
+            if (tabs.length === 0) {
+                addTab('', '', 'python'); 
+            } else if (activeTabId === id) {
+                switchTab(tabs[tabs.length - 1].id);
+            } else {
+                renderTabs();
+            }
+        }
+
+        // INICJALIZACJA MONACO EDITOR
+        require.config({ paths: { 'vs': 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.40.0/min/vs' }});
         require(['vs/editor/editor.main'], function() {
-            monaco.languages.registerCompletionItemProvider('python', {
-                provideCompletionItems: function(model, position) {
-                    var suggestions = [
-                        { label: 'def_function', kind: monaco.languages.CompletionItemKind.Snippet, insertText: ['def ${1:nazwa}(${2:args}):', '\\t${3:pass}'].join('\\n'), insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet, documentation: '__DOC_DEF__' },
-                        { label: 'print', kind: monaco.languages.CompletionItemKind.Function, insertText: 'print(${1:wartosc})', insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet, documentation: '__DOC_PRINT__' },
-                        { label: 'if_main', kind: monaco.languages.CompletionItemKind.Snippet, insertText: ['if __name__ == "__main__":', '\\t${1:main()}'].join('\\n'), insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet, documentation: '__DOC_IF__' },
-                        { label: 'for_loop', kind: monaco.languages.CompletionItemKind.Snippet, insertText: ['for ${1:element} in ${2:kolekcja}:', '\\t${3:pass}'].join('\\n'), insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet, documentation: '__DOC_FOR__' }
-                    ];
-                    return { suggestions: suggestions };
+            let initialCode = isEN ? '# Welcome to EditCode!' : '# Witaj w EditCode!';
+            
+            editor = monaco.editor.create(document.getElementById('editor-container'), {
+                value: '',
+                language: 'python',
+                theme: 'vs-dark',
+                automaticLayout: true
+            });
+            
+            editor.onDidChangeModelContent(function() {
+                if (!isSwitching && activeTabId !== null) {
+                    let tab = tabs.find(t => t.id === activeTabId);
+                    if (tab && tab.saved) {
+                        tab.saved = false;
+                        renderTabs();
+                    }
                 }
             });
 
-            if ('__LANG__' === 'pl') {
+            if (!isEN) {
                 setInterval(function() {
+                    // 1. Tłumaczenie głównych pól
                     document.querySelectorAll('textarea[placeholder="Find"], input[placeholder="Find"]').forEach(function(e) { e.placeholder = 'Znajdź'; });
                     document.querySelectorAll('textarea[placeholder="Replace"], input[placeholder="Replace"]').forEach(function(e) { e.placeholder = 'Zamień'; });
                     
+                    // 2. Tłumaczenie licznika wyników
                     document.querySelectorAll('.matchesCount').forEach(function(e) {
                         if (e.innerText === 'No results') e.innerText = 'Brak wyników';
                         else if (e.innerText.indexOf(' of ') !== -1) e.innerText = e.innerText.replace(' of ', ' z ');
                     });
 
-                    var titles = {
-                        'Previous match (Shift+Enter)': 'Poprzedni wynik (Shift+Enter)',
-                        'Next match (Enter)': 'Następny wynik (Enter)',
-                        'Close (Escape)': 'Zamknij (Escape)',
-                        'Replace (Enter)': 'Zamień (Enter)',
-                        'Replace All (Enter)': 'Zamień wszystko (Enter)',
-                        'Match Case': 'Uwzględniaj wielkość liter',
-                        'Match Whole Word': 'Dopasuj całe słowo',
-                        'Use Regular Expression': 'Użyj wyrażeń regularnych'
-                    };
-                    for (var key in titles) {
-                        document.querySelectorAll('[title="' + key + '"]').forEach(function(e) { e.title = titles[key]; });
-                    }
+                    // 3. Tłumaczenie "dymków" (tooltipów)
+                    const tooltips = [
+                        // Najdłuższe i najbardziej specyficzne frazy MUSZĄ być na początku!
+                        ['Toggle Replace mode', 'Przełącz tryb zamiany'],
+                        ['Toggle Replace', 'Przełącz tryb zamiany'],
+                        ['Replace All', 'Zamień wszystko'],
+                        ['Replace', 'Zamień'], // Krótkie "Zamień" dopiero po odrzuceniu dłuższych
+                        ['Find in Selection', 'Znajdź w zaznaczeniu'], // Monaco używa wielkiej litery 'S'
+                        ['Find in selection', 'Znajdź w zaznaczeniu'], // Zapasowe z małą literą
+                        ['Previous match', 'Poprzedni wynik'],
+                        ['Next match', 'Następny wynik'],
+                        ['Close (Escape)', 'Zamknij (Escape)'],
+                        ['Match Case', 'Uwzględniaj wielkość liter'],
+                        ['Match Whole Word', 'Dopasuj całe słowo'],
+                        ['Use Regular Expression', 'Użyj wyrażeń regularnych'],
+                        ['Preserve Case', 'Zachowaj wielkość liter']
+                    ];
+                    
+                    document.querySelectorAll('[title]').forEach(function(e) {
+                        tooltips.forEach(function(t) {
+                            if (e.title.includes(t[0])) {
+                                e.title = e.title.replace(t[0], t[1]);
+                            }
+                        });
+                    });
                 }, 200);
             }
 
-            var fileContent = b64DecodeUnicode('__B64_CONTENT__');
-
-            window.myEditor = monaco.editor.create(document.getElementById('editor'), {
-                value: fileContent,
-                language: '__INITIAL_LANG__',
-                theme: 'vs-dark',
-                automaticLayout: true
-            });
-
-            window.myEditor.onDidChangeModelContent(function() { document.title = "MODIFIED"; });
+            addTab('', initialCode, 'python');
         });
-        
-        // ZMIANA: Zapisywanie uwzględnia nową zmienną
-        function getEditorContent() { return window.myEditor ? window.myEditor.getValue() : ""; }
-        function setEditorSaved() { document.title = "SAVED"; }
+
+        function appendTerminal(text) {
+            var term = document.getElementById('terminal');
+            term.textContent += text;
+            term.scrollTop = term.scrollHeight;
+        }
+
+        function openFile() {
+            pywebview.api.open_file_dialog().then(function(result) {
+                if(result) {
+                    addTab(result.filepath, result.content, result.lang);
+                    appendTerminal(UI.openMsg + result.filepath + "\\n");
+                }
+            });
+        }
+
+        function saveFile() {
+            if (activeTabId === null) return;
+            let tab = tabs.find(t => t.id === activeTabId);
+            tab.content = editor.getValue();
+            
+            pywebview.api.save_file_dialog(tab.content, tab.filepath).then(function(result) {
+                if(result) {
+                    tab.filepath = result.filepath;
+                    tab.filename = result.filename;
+                    tab.saved = true;
+                    renderTabs();
+                    appendTerminal(UI.saveMsg + tab.filename + "\\n");
+                }
+            });
+        }
+
+        function triggerFind() {
+            if (editor) { editor.trigger('keyboard', 'actions.find', null); }
+        }
+
+        function runCode() {
+            if (activeTabId === null) return;
+            let tab = tabs.find(t => t.id === activeTabId);
+            tab.content = editor.getValue();
+            
+            if (!tab.saved || !tab.filepath) {
+                appendTerminal(UI.errSave);
+                return;
+            }
+            pywebview.api.run_code(tab.filepath);
+        }
+
+        function stopCode() { pywebview.api.stop_code(); }
+
+        // ==========================================
+        // GLOBALNY NASŁUCH SKRÓTÓW (Ostateczne zabezpieczenie)
+        // ==========================================
+        window.addEventListener('keydown', function(e) {
+            if (e.ctrlKey || e.metaKey) {
+                let key = e.key.toLowerCase();
+                if (key === 's') { e.preventDefault(); saveFile(); }
+                if (key === 'o') { e.preventDefault(); openFile(); }
+                if (key === 'f') { e.preventDefault(); triggerFind(); }
+                if (key === 'enter') { e.preventDefault(); runCode(); }
+            }
+        });
+
     </script>
 </body>
 </html>
 """
 
-MONACO_HTML = MONACO_HTML.replace('__DOC_DEF__', T['doc_def'])\
-                         .replace('__DOC_PRINT__', T['doc_print'])\
-                         .replace('__DOC_IF__', T['doc_if'])\
-                         .replace('__DOC_FOR__', T['doc_for'])\
-                         .replace('__LANG__', LANG)
-
-class CustomWebEnginePage(QWebEnginePage):
-    def javaScriptConsoleMessage(self, level, message, lineNumber, sourceID):
-        if "Blocked aria-hidden" in message:
-            return
-        super().javaScriptConsoleMessage(level, message, lineNumber, sourceID)
-
-class EditCode(QMainWindow):
+# ==========================================
+# 2. BACKEND: LOGIKA SYSTEMOWA W PYTHONIE
+# ==========================================
+class BackendApi:
     def __init__(self):
-        super().__init__()
-        self.setWindowTitle("EditCode")
-        self.resize(1200, 800)
-        self.center_window()
-        
-        self.setAttribute(Qt.WidgetAttribute.WA_NoSystemBackground, True)
-        self.setContentsMargins(0, 0, 0, 0)
-        
-        self.setStyleSheet("""
-            QMainWindow, QWidget#centralwidget, QFrame { 
-                background-color: #121212; 
-                border: none; 
-                margin: 0; 
-                padding: 0; 
-                outline: none;
-            }
-  
-            * {
-                outline: none;
-            }
-            QPushButton:focus {
-                outline: none;
-                border: none;
-            }
-            QToolTip {
-                background-color: #2a2a2a;
-                color: #ffffff;
-                border: 1px solid #555555;
-            }
-        """)
+        self.window = None
+        self.process = None
 
-        central_widget = QFrame()
-        central_widget.setObjectName("centralwidget")
-        central_widget.setFrameShape(QFrame.Shape.NoFrame)
-        central_layout = QVBoxLayout(central_widget)
-        central_layout.setContentsMargins(0, 0, 0, 0)
-        central_layout.setSpacing(0)
-        self.setCentralWidget(central_widget)
+    def set_window(self, window):
+        self.window = window
 
-        self.custom_toolbar = QFrame()
-        self.custom_toolbar.setStyleSheet("background-color: #121212; border: none; outline: none;")
-        self.custom_toolbar.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
-        toolbar_layout = QHBoxLayout(self.custom_toolbar)
-        toolbar_layout.setContentsMargins(10, 6, 10, 6) 
-        toolbar_layout.setSpacing(10)
+    def print_terminal(self, text):
+        if self.window:
+            self.window.evaluate_js(f"appendTerminal({json.dumps(text)})")
 
-        run_btn = QPushButton(T['run'])
-        run_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        run_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus) 
-        run_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #2d2d2d; color: #ffffff; 
-                border: none; border-radius: 4px; padding: 6px 14px;
-            }
-            QPushButton:hover { background-color: #3d3d3d; }
-            QPushButton:pressed { background-color: #555555; }
-        """)
-        run_btn.clicked.connect(self.run_code)
+    def get_lang(self, filepath):
+        if filepath.endswith('.py'): return 'python'
+        if filepath.endswith('.js'): return 'javascript'
+        if filepath.endswith('.html'): return 'html'
+        if filepath.endswith('.css'): return 'css'
+        return 'plaintext'
 
-        stop_btn = QPushButton(T['stop'])
-        stop_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        stop_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus) 
-        stop_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #2d2d2d; color: #ffffff; 
-                border: none; border-radius: 4px; padding: 6px 14px;
-            }
-            QPushButton:hover { background-color: #3d3d3d; }
-            QPushButton:pressed { background-color: #555555; }
-        """)
-        stop_btn.clicked.connect(self.stop_code)
-
-        toolbar_layout.addWidget(run_btn)
-        toolbar_layout.addWidget(stop_btn)
-        toolbar_layout.addStretch() 
-
-        central_layout.addWidget(self.custom_toolbar)
-
-        self.horizontal_splitter = QSplitter(Qt.Orientation.Horizontal)
-        self.vertical_splitter = QSplitter(Qt.Orientation.Vertical)
-
-        splitter_style = "QSplitter { border: none; } QSplitter::handle { background-color: #121212; border: none; }"
-        self.horizontal_splitter.setStyleSheet(splitter_style)
-        self.horizontal_splitter.setHandleWidth(0) 
-        self.vertical_splitter.setStyleSheet(splitter_style)
-        self.vertical_splitter.setHandleWidth(0)   
-
-        central_layout.addWidget(self.horizontal_splitter, 1)
-
-        self.file_model = QFileSystemModel()
-        self.file_model.setRootPath("") 
-        self.tree_view = QTreeView()
-        self.tree_view.setModel(self.file_model)
-        self.tree_view.setHeaderHidden(True) 
-        self.tree_view.hide() 
-        
-        for i in range(1, 4):
-            self.tree_view.setColumnHidden(i, True)
-        self.tree_view.doubleClicked.connect(self.on_file_double_clicked)
-        self.tree_view.setStyleSheet("background-color: #1e1e1e; color: #d4d4d4; border: none; outline: none;")
-
-        self.tabs = QTabWidget()
-        self.tabs.setTabsClosable(True)
-        self.tabs.setDocumentMode(True) 
-        self.tabs.tabCloseRequested.connect(self.close_tab)
-
-        self.tabs.setStyleSheet(f"""
-            QTabWidget {{ background: #121212; border: none; margin: 0; padding: 0; }}
-            QTabWidget::pane {{ border: none; background: #1e1e1e; top: 0px; }}
-            QTabBar {{ background: #121212; border: none; qproperty-drawBase: 0; }}
-            QTabWidget::tab-bar {{ alignment: left; border: none; }}
-            
-            QTabBar::tab {{ 
-                background: #121212; color: #888888; 
-                padding: 10px 15px 10px 24px; 
-                border: none;
-                border-top-left-radius: 8px; border-top-right-radius: 8px;
-                margin-right: 2px;
-            }}
-            QTabBar::tab:selected {{ 
-                background: #1e1e1e; color: #ffffff; 
-                border: none;
-            }}
-            QTabBar::tab:hover:!selected {{ color: #dddddd; background: #1a1a1a; }}
-            
-            QTabBar::tab:last {{
-                background: transparent;
-                padding: 10px 16px;
-                margin-left: 2px;
-                font-size: 18px;
-                font-weight: bold;
-                color: #888888;
-            }}
-            QTabBar::tab:last:hover {{
-                color: #ffffff;
-                background: transparent;
-            }}
-            
-            QTabBar::close-button {{
-                image: url("{close_icon_path}");
-                subcontrol-position: left center;
-                margin-left: 8px; width: 12px; height: 12px;
-                background: transparent; border: none;
-            }}
-            QTabBar::close-button:hover {{ 
-                image: url("{close_hover_icon_path}");
-                background: transparent; 
-            }}
-        """)
-
-        self.plus_tab = QWidget()
-        self.tabs.addTab(self.plus_tab, "+")
-        self.tabs.setTabToolTip(0, T['new_file'])
-        self.remove_plus_close_button()
-
-        self.terminal_box = QFrame()
-        self.terminal_box.setFrameShape(QFrame.Shape.NoFrame)
-        terminal_layout = QVBoxLayout(self.terminal_box)
-        terminal_layout.setContentsMargins(0, 0, 0, 0)
-        terminal_layout.setSpacing(0)
-        
-        terminal_label = QLabel(T['terminal'])
-        terminal_label.setStyleSheet("background-color: #121212; color: #aaaaaa; padding: 6px; border: none;")
-        
-        self.terminal_output = QPlainTextEdit()
-        self.terminal_output.setFont(QFont("Courier New", 14))
-        self.terminal_output.setStyleSheet("background-color: #121212; color: #00FF00; border: none; padding: 4px; outline: none;")
-        
-        terminal_layout.addWidget(terminal_label)
-        terminal_layout.addWidget(self.terminal_output)
-
-        self.horizontal_splitter.addWidget(self.tree_view)
-        self.horizontal_splitter.addWidget(self.vertical_splitter)
-        self.vertical_splitter.addWidget(self.tabs)
-        self.vertical_splitter.addWidget(self.terminal_box)
-        self.vertical_splitter.setSizes([600, 200])
-        self.horizontal_splitter.setSizes([250, 950])
-
-        self.terminal_process = QProcess(self)
-        self.terminal_process.readyReadStandardOutput.connect(self.read_terminal_output)
-        self.terminal_process.readyReadStandardError.connect(self.read_terminal_error)
-        self.start_system_terminal()
-        self.terminal_output.installEventFilter(self)
-
-        self.create_menu()
-        
-        opened_from_args = False
-        if len(sys.argv) > 1:
-            for arg in sys.argv[1:]:
-                if os.path.isfile(arg):
-                    self.load_file_into_editor(arg)
-                    opened_from_args = True
-        
-        if not opened_from_args:
-            self.new_file()
-        
-        self.tabs.currentChanged.connect(self.on_tab_changed)
-        
-        self.on_tab_changed(self.tabs.currentIndex())
-        
-    def remove_plus_close_button(self):
-        last_idx = self.tabs.count() - 1
-        if last_idx >= 0 and self.tabs.tabText(last_idx) == "+":
-            self.tabs.tabBar().setTabButton(last_idx, QTabBar.ButtonPosition.RightSide, None)
-            self.tabs.tabBar().setTabButton(last_idx, QTabBar.ButtonPosition.LeftSide, None)
-
-    def center_window(self):
-        qr = self.frameGeometry()
-        cp = self.screen().availableGeometry().center()
-        qr.moveCenter(cp)
-        self.move(qr.topLeft())
-
-    def create_menu(self):
-        menubar = self.menuBar()
-        menubar.setNativeMenuBar(True) 
-        
-        file_menu = menubar.addMenu(T['file'])
-        
-        new_act = file_menu.addAction(T['new'])
-        new_act.setShortcut("Ctrl+N")
-        new_act.triggered.connect(self.new_file)
-
-        open_act = file_menu.addAction(T['open_file'])
-        open_act.setShortcut("Ctrl+O")
-        open_act.triggered.connect(self.open_file)
-        
-        open_folder_act = file_menu.addAction(T['open_folder'])
-        open_folder_act.triggered.connect(self.open_folder)
-        
-        edit_menu = menubar.addMenu(T['edit'])
-        find_act = edit_menu.addAction(T['find'])
-        find_act.setShortcut("Ctrl+F")
-        find_act.triggered.connect(self.find_text)
-
-        self.save_act = file_menu.addAction(T['save'])
-        self.save_act.setShortcut("Ctrl+S")
-        self.save_act.triggered.connect(self.save_file)
-        
-        file_menu.addSeparator()
-        
-        exit_act = file_menu.addAction(T['exit'])
-        exit_act.triggered.connect(self.close)
-
-        help_menu = menubar.addMenu(T['help'])
-        about_act = help_menu.addAction(T['about'])
-        about_act.setMenuRole(QAction.MenuRole.AboutRole)
-        about_act.triggered.connect(self.show_about)
-    
-    def find_text(self):
-        index = self.tabs.currentIndex()
-        if index == -1 or self.tabs.tabText(index) == "+": return
-        
-        browser = self.tabs.widget(index)
-        
-        js_code = "if (window.myEditor) { window.myEditor.trigger('keyboard', 'actions.find', null); }"
-        browser.page().runJavaScript(js_code)
-        
-    def show_about(self):
-        if platform.system() == "Darwin":
+    def open_file_dialog(self):
+        # ZMIANA: Używamy nowej składni webview.FileDialog.OPEN
+        result = self.window.create_file_dialog(webview.FileDialog.OPEN)
+        if result and len(result) > 0:
+            filepath = result[0]
             try:
-                import ctypes
-                import ctypes.util
-                objc_path = ctypes.util.find_library('objc')
-                objc = ctypes.cdll.LoadLibrary(objc_path)
-                objc.objc_getClass.restype = ctypes.c_void_p
-                objc.sel_registerName.restype = ctypes.c_void_p
-                
-                NSApplication_class = objc.objc_getClass(b"NSApplication")
-                sharedApp_sel = objc.sel_registerName(b"sharedApplication")
-                orderFront_sel = objc.sel_registerName(b"orderFrontStandardAboutPanel:")
-                
-                msgSend_shared = ctypes.cast(objc.objc_msgSend, ctypes.CFUNCTYPE(ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p))
-                msgSend_about = ctypes.cast(objc.objc_msgSend, ctypes.CFUNCTYPE(ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p))
-                
-                sharedApp = msgSend_shared(NSApplication_class, sharedApp_sel)
-                msgSend_about(sharedApp, orderFront_sel, None)
-                return 
+                with open(filepath, 'r', encoding='utf-8') as f:
+                    content = f.read()
+                return {'filepath': filepath, 'content': content, 'lang': self.get_lang(filepath)}
             except Exception as e:
-                pass 
-                
-        text = (
-            "<h3>EditCode</h3>"
-            "<p>Wersja 1.0.0<br>Lekkie środowisko programistyczne.</p>"
-            "<p>Copyright © 2026 Daniel Kaliski.<br>All rights reserved.</p>"
-        )
-        if LANG == 'en':
-            text = (
-                "<h3>EditCode</h3>"
-                "<p>Version 1.0.0<br>Lightweight IDE.</p>"
-                "<p>Copyright © 2026 Daniel Kaliski.<br>All rights reserved.</p>"
-            )
-            
-        QMessageBox.about(self, T['about'], text)
+                self.print_terminal(f"\n[{T['err']}] {T['err_open']} {e}\n")
+        return None
 
-    def create_tab(self, filepath=None, content="", lang="python"):
-        browser = QWebEngineView()
-        page = CustomWebEnginePage(browser)
-        browser.setPage(page)
-        browser.page().setBackgroundColor(QColor("#1e1e1e"))
-        browser.setStyleSheet("border: none; outline: none;")
-        
-        browser.filepath = filepath
-        browser.is_modified = False
-        
-        b64_content = base64.b64encode(content.encode('utf-8')).decode('utf-8')
-        html = MONACO_HTML.replace('__B64_CONTENT__', b64_content).replace('__INITIAL_LANG__', lang)
-        
-        browser.setHtml(html)
-        browser.titleChanged.connect(lambda title, b=browser: self.on_tab_title_changed(b, title))
-        
-        tab_title = os.path.basename(filepath) if filepath else T['new_file']
-        
-        insert_idx = self.tabs.count() - 1
-        if insert_idx < 0: 
-            insert_idx = 0
-            
-        index = self.tabs.insertTab(insert_idx, browser, tab_title)
-        self.tabs.setCurrentIndex(index)
-        
-        self.remove_plus_close_button()
-        
-        for btn in self.tabs.tabBar().findChildren(QAbstractButton):
-            btn.setToolTip(T['close_tab_btn'])
-            
-        return browser
-
-    def on_tab_title_changed(self, browser, title):
-        if title == "MODIFIED" and not browser.is_modified:
-            browser.is_modified = True
-            index = self.tabs.indexOf(browser)
-            if index != -1:
-                current_text = self.tabs.tabText(index)
-                if not current_text.endswith("*"):
-                    self.tabs.setTabText(index, current_text + "*")
-
-    def close_tab(self, index):
-        if self.tabs.tabText(index) == "+": 
-            return 
-            
-        browser = self.tabs.widget(index)
-        
-        if browser.is_modified:
-            filename = os.path.basename(browser.filepath) if browser.filepath else T['new_file']
-            dialog = CustomDialog(T['unsaved_title'], T['unsaved_tab'].format(filename), self)
-            if dialog.exec() == 0: 
-                return
-
-        self.tabs.removeTab(index)
-        browser.deleteLater()
-
-        if self.tabs.count() == 1 and self.tabs.tabText(0) == "+":
-            self.close()
-        else:
-            self.remove_plus_close_button()
-
-    def on_tab_changed(self, index):
-        if index == -1: return
-
-        if self.tabs.tabText(index) == "+":
-            if self.tabs.count() > 1:
-                self.tabs.setCurrentIndex(self.tabs.count() - 2)
-            self.new_file()
-            return
-
-        browser = self.tabs.widget(index)
-        if hasattr(browser, 'filepath'):
-            title = browser.filepath if browser.filepath else T['new_file']
-            self.setWindowTitle(f"EditCode - {title}")
-
-    def run_code(self):
-        index = self.tabs.currentIndex()
-        if index == -1 or self.tabs.tabText(index) == "+": return
-        
-        browser = self.tabs.widget(index)
-        
-        if browser.is_modified or not browser.filepath:
-            dialog = CustomDialog(T['save'], T['save_before_run'], self)
-            if dialog.exec() == 1: 
-                self.save_file(run_after_save=True)
-            return 
-
-        self.execute_command(browser.filepath)
-
-    def execute_command(self, filepath):
-        ext = os.path.splitext(filepath)[1].lower()
-        cmd = ""
-        
-        if ext == '.py':
-            if getattr(sys, 'frozen', False):
-                if platform.system() == "Darwin": 
-                    if os.path.exists("/usr/local/bin/python3"):
-                        python_exec = "/usr/local/bin/python3"
-                    elif os.path.exists("/opt/homebrew/bin/python3"):
-                        python_exec = "/opt/homebrew/bin/python3"
-                    else:
-                        python_exec = "python3"
-                elif platform.system() == "Windows":
-                    python_exec = "python"
-                else:
-                    python_exec = "python3"
+    def save_file_dialog(self, content, current_filepath):
+        filepath_to_save = current_filepath
+        if not filepath_to_save:
+            # ZMIANA: Używamy nowej składni webview.FileDialog.SAVE
+            result = self.window.create_file_dialog(webview.FileDialog.SAVE)
+            if result and len(result) > 0:
+                filepath_to_save = result[0]
             else:
-                python_exec = sys.executable
-                
-            cmd = f'"{python_exec}" -u "{filepath}"'
-        elif ext == '.js':
-            cmd = f'node "{filepath}"'
-        elif ext in ['.sh', '.bat']:
-            cmd = f'"{filepath}"'
-        else:
-            self.terminal_output.appendPlainText(T['no_run_support'].format(ext))
-            return
+                return None
 
-        self.terminal_output.appendPlainText(T['run_msg'].format(cmd))
-        self.terminal_process.write((cmd + "\n").encode('utf-8'))
-
-    def stop_code(self):
-        self.terminal_output.appendPlainText(T['stop_msg'])
-        self.terminal_process.kill()
-        self.terminal_process.waitForFinished()
-        self.start_system_terminal()
-
-    def new_file(self):
-        self.create_tab(filepath=None, content=T['welcome'], lang='python')
-
-    def open_folder(self):
-        folder_path = QFileDialog.getExistingDirectory(self, T['select_folder'])
-        if folder_path:
-            self.tree_view.setRootIndex(self.file_model.setRootPath(folder_path))
-            self.tree_view.show()
-            cd_cmd = f"cd '{folder_path}'\n"
-            self.terminal_process.write(cd_cmd.encode())
-
-    def on_file_double_clicked(self, index):
-        filepath = self.file_model.filePath(index)
-        if os.path.isfile(filepath):
-            for i in range(self.tabs.count()):
-                if self.tabs.tabText(i) == "+": continue 
-                browser = self.tabs.widget(i)
-                if browser.filepath == filepath:
-                    self.tabs.setCurrentIndex(i)
-                    return
-            self.load_file_into_editor(filepath)
-
-    def get_language_from_extension(self, filepath):
-        ext = os.path.splitext(filepath)[1].lower()
-        mapping = {
-            '.py': 'python', '.js': 'javascript', '.html': 'html',
-            '.css': 'css', '.cpp': 'cpp', '.c': 'c', '.json': 'json',
-            '.md': 'markdown'
-        }
-        return mapping.get(ext, 'plaintext')
-
-    def open_file(self):
-        filepath, _ = QFileDialog.getOpenFileName(self, T['open_file'], "", T['all_files'])
-        if filepath:
-            self.load_file_into_editor(filepath)
-
-    def load_file_into_editor(self, filepath):
         try:
-            with open(filepath, 'r', encoding='utf-8') as file:
-                content = file.read()
-            lang = self.get_language_from_extension(filepath)
-            self.create_tab(filepath=filepath, content=content, lang=lang)
-            
-        except UnicodeDecodeError:
-            dialog = CustomDialog(T['error'], T['binary_error'], self, buttons="ok")
-            dialog.exec()
-            
+            with open(filepath_to_save, 'w', encoding='utf-8') as f:
+                f.write(content)
+            filename = os.path.basename(filepath_to_save)
+            return {'filepath': filepath_to_save, 'filename': filename}
         except Exception as e:
-                dialog = CustomDialog(T['error'], T['save_error'].format(e), self, buttons="ok")
-                dialog.exec()
+            self.print_terminal(f"\n[{T['err']}] {T['err_save']} {e}\n")
+            return None
 
-    def save_file(self, run_after_save=False):
-        index = self.tabs.currentIndex()
-        if index == -1 or self.tabs.tabText(index) == "+": return
-        
-        browser = self.tabs.widget(index)
-        
-        if not browser.filepath:
-            filepath, _ = QFileDialog.getSaveFileName(self, T['save'], "", T['all_files'])
-            if not filepath: return
-            browser.filepath = filepath
-            self.tabs.setTabText(index, os.path.basename(filepath))
+    def save_file_dialog(self, content, current_filepath):
+        filepath_to_save = current_filepath
+        if not filepath_to_save:
+            result = self.window.create_file_dialog(webview.SAVE_DIALOG)
+            if result and len(result) > 0:
+                filepath_to_save = result[0]
+            else:
+                return None
 
-        def write_to_disk(content):
-            try:
-                with open(browser.filepath, 'w', encoding='utf-8') as file:
-                    file.write(content)
-                
-                browser.is_modified = False
-                browser.page().runJavaScript("setEditorSaved();")
-                
-                self.tabs.setTabText(self.tabs.indexOf(browser), os.path.basename(browser.filepath))
-                self.setWindowTitle(f"EditCode - {browser.filepath}")
-                
-                if run_after_save:
-                    self.execute_command(browser.filepath)
-                    
-            except Exception as e:
-                dialog = CustomDialog(T['error'], T['save_error'].format(e), self)
-                dialog.exec()
-
-        browser.page().runJavaScript("getEditorContent();", write_to_disk)
-
-    def start_system_terminal(self):
-        sys_type = platform.system()
-        if sys_type == "Windows":
-            self.terminal_process.start("powershell.exe", ["-NoExit"])
-        elif sys_type == "Darwin":
-            self.terminal_process.start("/bin/zsh", ["-i"])
-        else:
-            self.terminal_process.start("/bin/bash", ["-i"])
-
-    def read_terminal_output(self):
-        data = self.terminal_process.readAllStandardOutput().data().decode(errors='replace')
-        self.terminal_output.insertPlainText(data)
-        self.terminal_output.ensureCursorVisible()
-
-    def read_terminal_error(self):
-        data = self.terminal_process.readAllStandardError().data().decode(errors='replace')
-        self.terminal_output.insertPlainText(data)
-        self.terminal_output.ensureCursorVisible()
-
-    def eventFilter(self, obj, event):
-        if obj == self.terminal_output and event.type() == event.Type.KeyPress:
-            if event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
-                cursor = self.terminal_output.textCursor()
-                cursor.movePosition(cursor.MoveOperation.End)
-                self.terminal_output.setTextCursor(cursor)
-                
-                lines = self.terminal_output.toPlainText().split('\n')
-                last_line = lines[-1] if lines else ""
-                command = last_line.strip()
-                
-                self.terminal_process.write((command + "\n").encode())
-                self.terminal_output.insertPlainText("\n")
-                return True 
-        return super().eventFilter(obj, event)
-
-    def closeEvent(self, event):
-        for i in range(self.tabs.count()):
-            if self.tabs.tabText(i) == "+": continue 
-            
-            browser = self.tabs.widget(i)
-            if browser.is_modified:
-                self.tabs.setCurrentIndex(i)
-                dialog = CustomDialog(T['exit'], T['unsaved_exit'], self)
-                if dialog.exec() == 0:
-                    event.ignore()
-                    return
-
-        self.terminal_process.kill()
-        self.terminal_process.waitForFinished()
-        event.accept()
-
-if __name__ == "__main__":
-    if platform.system() == "Windows":
         try:
-            import ctypes
-            myappid = u'com.danielkaliski.editcode.1.0.0'
-            ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
-        except Exception:
-            pass
+            with open(filepath_to_save, 'w', encoding='utf-8') as f:
+                f.write(content)
+            filename = os.path.basename(filepath_to_save)
+            return {'filepath': filepath_to_save, 'filename': filename}
+        except Exception as e:
+            self.print_terminal(f"\n[{T['err']}] {T['err_save']} {e}\n")
+            return None
 
-    class EditCodeApp(QApplication):
-        def __init__(self, argv):
-            super().__init__(argv)
-            self.main_window = None
-            self.pending_files = [] 
-
-        def event(self, event):
-            if event.type() == QEvent.Type.FileOpen:
-                file_path = event.file()
-                if self.main_window:
-                    self.main_window.load_file_into_editor(file_path)
-                 
-                    if self.main_window.tabs.count() == 2 and self.main_window.tabs.tabText(0) == T['new_file']:
-                        browser = self.main_window.tabs.widget(0)
-                        if not getattr(browser, 'is_modified', True):
-                            self.main_window.tabs.removeTab(0)
-                            browser.deleteLater()
-                else:
-                    self.pending_files.append(file_path)
-                return True
-            return super().event(event)
-
-    app = EditCodeApp(sys.argv)
-    app.setStyle("Fusion") 
-    
-    if hasattr(sys, '_MEIPASS'):
-        basedir = sys._MEIPASS
-    else:
-        basedir = os.path.dirname(os.path.abspath(__file__))
+    def run_code(self, filepath):
+        if not filepath: return
         
-    icon_path = os.path.join(basedir, 'icon.ico')
-    # ---------------------------------------------------------
+        abs_filepath = os.path.abspath(filepath)
+        filename = os.path.basename(abs_filepath)
+        
+        self.print_terminal(f"\n[EditCode] {T['run_msg']} {filename}\n")
+        
+        def execute():
+            try:
+                env = os.environ.copy()
+                
+                # --- KLUCZOWA POPRAWKA DLA SKOMPILOWANEJ APLIKACJI (.app / .exe) ---
+                if getattr(sys, 'frozen', False):
+                    # 1. Przebijamy "bańkę" PyInstallera - usuwamy jego fałszywe zmienne
+                    env.pop('PYTHONHOME', None)
+                    env.pop('PYTHONPATH', None)
+                    env.pop('DYLD_LIBRARY_PATH', None)
+                    env.pop('LD_LIBRARY_PATH', None)
+                    
+                    if platform.system() == 'Darwin':
+                        # 2. Wymuszamy, by macOS znalazł Twojego prawdziwego Pythona z bibliotekami
+                        env['PATH'] = '/usr/local/bin:/opt/homebrew/bin:' + env.get('PATH', '/usr/bin:/bin')
+                        cmd = ['python3', abs_filepath]
+                    else:
+                        cmd = ['python', abs_filepath]
+                else:
+                    # Skrypt uruchamiany normalnie z terminala
+                    cmd = [sys.executable, abs_filepath]
+
+                # Niezależnie od kompilacji, sprawdzamy pliki JS
+                if abs_filepath.endswith('.js'):
+                    cmd = ['node', abs_filepath]
+
+                self.process = subprocess.Popen(
+                    cmd, 
+                    stdout=subprocess.PIPE, 
+                    stderr=subprocess.STDOUT, 
+                    text=True, 
+                    bufsize=1,
+                    env=env, # Przekazujemy wyczyszczone środowisko!
+                    cwd=os.path.dirname(abs_filepath)
+                )
+                
+                for line in self.process.stdout:
+                    self.print_terminal(line)
+                    
+                self.process.wait()
+                self.print_terminal(f"\n[EditCode] {T['done_msg']} {self.process.returncode})\n")
+            except Exception as e:
+                self.print_terminal(f"\n[{T['err']}] Nie udało się uruchomić procesu: {str(e)}\n")
+
+        threading.Thread(target=execute, daemon=True).start()
+        
+    def stop_code(self):
+        if self.process and self.process.poll() is None:
+            self.process.terminate()
+            self.print_terminal(f"\n[EditCode] {T['stop_msg']}\n")
+
+
+# ==========================================
+# 3. FIX MENU MACOS (Z opóźnieniem)
+# ==========================================
+def fix_macos_menu():
+    if platform.system() != 'Darwin':
+        return
+        
+    def apply_fix():
+        try:
+            from AppKit import NSApplication
+            app = NSApplication.sharedApplication()
+            main_menu = app.mainMenu()
+            if not main_menu: return
+
+            main_menu.itemAtIndex_(0).setTitle_('EditCode')
+            
+            target_title = T['file']
+            plik_index = -1
+            for i in range(main_menu.numberOfItems()):
+                if main_menu.itemAtIndex_(i).title() == target_title:
+                    plik_index = i
+                    break
+            
+            if plik_index > 1:
+                plik_item = main_menu.itemAtIndex_(plik_index)
+                edit_item = main_menu.itemAtIndex_(1)
+                view_item = main_menu.itemAtIndex_(2)
+                
+                if is_pl:
+                    edit_item.setTitle_('Edycja')
+                    if edit_item.submenu(): edit_item.submenu().setTitle_('Edycja')
+                    view_item.setTitle_('Widok')
+                    if view_item.submenu(): view_item.submenu().setTitle_('Widok')
+                
+                main_menu.removeItemAtIndex_(plik_index)
+                main_menu.insertItem_atIndex_(plik_item, 1)
+
+        except Exception as e:
+            pass 
+
+    def delayed_execution():
+        try:
+            from PyObjCTools import AppHelper
+            AppHelper.callAfter(apply_fix)
+        except:
+            apply_fix()
+
+    threading.Timer(0.5, delayed_execution).start()
+
+
+# ==========================================
+# 4. START APLIKACJI I INICJALIZACJA
+# ==========================================
+if __name__ == '__main__':
+    api = BackendApi()
     
-    dark_palette = QPalette()
-    dark_palette.setColor(QPalette.ColorRole.Window, QColor(18, 18, 18))
-    dark_palette.setColor(QPalette.ColorRole.WindowText, Qt.GlobalColor.white)
-    dark_palette.setColor(QPalette.ColorRole.Base, QColor(18, 18, 18))
-    dark_palette.setColor(QPalette.ColorRole.AlternateBase, QColor(18, 18, 18))
-    dark_palette.setColor(QPalette.ColorRole.ToolTipBase, QColor(40, 40, 40))
-    dark_palette.setColor(QPalette.ColorRole.ToolTipText, Qt.GlobalColor.white)
-    dark_palette.setColor(QPalette.ColorRole.Text, Qt.GlobalColor.white)
-    dark_palette.setColor(QPalette.ColorRole.Button, QColor(45, 45, 45))
-    dark_palette.setColor(QPalette.ColorRole.ButtonText, Qt.GlobalColor.white)
-    dark_palette.setColor(QPalette.ColorRole.Link, QColor(42, 130, 218))
-    dark_palette.setColor(QPalette.ColorRole.Highlight, QColor(42, 130, 218))
-    dark_palette.setColor(QPalette.ColorRole.HighlightedText, Qt.GlobalColor.black)
-    app.setPalette(dark_palette)
+    window = webview.create_window(
+        title='EditCode', 
+        html=HTML_CONTENT, 
+        js_api=api, 
+        width=1100, 
+        height=750,
+        background_color='#1e1e1e'
+    )
+    api.set_window(window)
+    window.events.loaded += fix_macos_menu
     
-    window = EditCode()
-    app.main_window = window 
+   # Wykrywamy platformę, aby poprawnie zbudować nazwy skrótów
+    CMD = '⌘' if platform.system() == 'Darwin' else 'Ctrl'
     
-    for f in app.pending_files:
-        window.load_file_into_editor(f)
-        if window.tabs.count() == 2 and window.tabs.tabText(0) == T['new_file']:
-            browser = window.tabs.widget(0)
-            if not getattr(browser, 'is_modified', True):
-                window.tabs.removeTab(0)
-                browser.deleteLater()
-    app.pending_files.clear()
-    
-    if platform.system() == "Windows":
-        app_icon = QIcon(icon_path)
-        app.setWindowIcon(app_icon)
-        window.setWindowIcon(app_icon) 
-    
-    window.show()
-    sys.exit(app.exec())
+    menu_items = [
+        Menu(T['file'], [
+            MenuAction(f"{T['open']}  ({CMD}O)", lambda: window.evaluate_js('openFile()')),
+            MenuAction(f"{T['save']}  ({CMD}S)", lambda: window.evaluate_js('saveFile()'))
+        ]),
+        Menu(T['tools'], [
+            MenuAction(f"{T['find']}  ({CMD}F)", lambda: window.evaluate_js('triggerFind()'))
+        ])
+    ]
+
+    webview.start(menu=menu_items, debug=False)
