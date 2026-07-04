@@ -78,22 +78,18 @@ HTML_CONTENT = """
         #exit-overlay { 
             display: none; position: absolute; top: 0; left: 0; width: 100%; height: 100%; 
             background: rgba(0, 0, 0, 0.65); z-index: 9999; 
-            justify-content: center; align-items: center; backdrop-filter: blur(2px);
+            justify-content: center; align-items: center; backdrop-filter: blur(3px);
         }
         .exit-modal { 
-            background: var(--panel); border: 1px solid #444; border-radius: 12px; 
-            padding: 30px; width: 320px; box-shadow: 0 15px 35px rgba(0,0,0,0.6); 
-            text-align: center; 
+            background: #1e1e1e; border: 1px solid #333; border-radius: 12px; 
+            padding: 30px; width: 340px; box-shadow: 0 20px 45px rgba(0,0,0,0.6); 
+            display: flex; flex-direction: column; align-items: center; text-align: center;
         }
-        .exit-content { 
-            display: flex; flex-direction: column; align-items: center; justify-content: center; 
-            gap: 15px; margin-bottom: 25px; 
-        }
-        .exit-icon { font-size: 45px; line-height: 1; }
-        .exit-text { font-size: 15px; line-height: 1.5; color: #fff; }
-        .exit-buttons { display: flex; justify-content: center; gap: 12px; }
+        .exit-icon { font-size: 48px; margin-bottom: 15px; line-height: 1; }
+        .exit-text { font-size: 15px; line-height: 1.5; color: #eee; margin-bottom: 25px; }
+        .exit-buttons { display: flex; justify-content: center; gap: 12px; width: 100%; }
         
-        .btn-modal { border: none; padding: 8px 20px; border-radius: 6px; cursor: pointer; font-size: 14px; transition: 0.2s; font-weight: bold; }
+        .btn-modal { border: none; padding: 8px 24px; border-radius: 6px; cursor: pointer; font-size: 14px; transition: 0.2s; font-weight: bold; }
         .btn-cancel { background: #444; color: white; }
         .btn-cancel:hover { background: #555; }
         .btn-confirm { background: #F44336; color: white; }
@@ -113,10 +109,8 @@ HTML_CONTENT = """
 
     <div id="exit-overlay">
         <div class="exit-modal">
-            <div class="exit-content">
-                <div class="exit-icon" id="exit-icon">⚠️</div>
-                <div class="exit-text" id="exit-msg">Czy na pewno chcesz zamknąć program EditCode?</div>
-            </div>
+            <div class="exit-icon" id="exit-icon">⚠️</div>
+            <div class="exit-text" id="exit-msg">Masz niezapisane zmiany!<br>Czy na pewno chcesz zakończyć bez zapisywania?</div>
             <div class="exit-buttons">
                 <button class="btn-modal btn-cancel" onclick="hideQuit()" id="btn-cancel">Anuluj</button>
                 <button class="btn-modal btn-confirm" onclick="confirmQuit()" id="btn-confirm">Zakończ</button>
@@ -139,8 +133,7 @@ HTML_CONTENT = """
             errSave: isEN ? "\\n[Error] Save the file first (File -> Save) before running!\\n" : "\\n[Błąd] Najpierw zapisz plik (Plik -> Zapisz) przed jego uruchomieniem!\\n",
             openMsg: isEN ? "\\n[EditCode] Opened: " : "\\n[EditCode] Otwarto: ",
             saveMsg: isEN ? "\\n[EditCode] Saved: " : "\\n[EditCode] Zapisano: ",
-            quitNormal: isEN ? "Are you sure you want to quit EditCode?" : "Czy na pewno chcesz zamknąć program EditCode?",
-            quitUnsaved: isEN ? "You have unsaved changes!\\nAre you sure you want to quit?" : "Masz niezapisane zmiany!\\nCzy na pewno chcesz zakończyć bez zapisywania?",
+            quitUnsaved: isEN ? "You have unsaved changes!<br>Are you sure you want to quit without saving?" : "Masz niezapisane zmiany!<br>Czy na pewno chcesz zakończyć bez zapisywania?",
             cancelBtn: isEN ? "Cancel" : "Anuluj",
             quitBtn: isEN ? "Quit" : "Zakończ"
         };
@@ -311,10 +304,15 @@ HTML_CONTENT = """
 
         function checkQuit() {
             let hasUnsaved = tabs.some(t => !t.saved);
-            document.getElementById('exit-msg').innerText = hasUnsaved ? UI.quitUnsaved : UI.quitNormal;
-            document.getElementById('exit-icon').innerText = hasUnsaved ? '⛔' : 'ℹ️';
-            document.getElementById('exit-overlay').style.display = 'flex';
+            if (!hasUnsaved) {
+                // Jeśli wszystko jest zapisane - zamknij natychmiast bez pytania!
+                pywebview.api.force_quit();
+            } else {
+                document.getElementById('exit-msg').innerHTML = UI.quitUnsaved;
+                document.getElementById('exit-overlay').style.display = 'flex';
+            }
         }
+        
         function hideQuit() { document.getElementById('exit-overlay').style.display = 'none'; }
         function confirmQuit() { pywebview.api.force_quit(); }
     </script>
@@ -334,10 +332,6 @@ class BackendApi:
     def force_quit(self):
         self.allow_quit = True
         self.stop_code()
-        
-        if self.window:
-            self.window.destroy()
-            
         os._exit(0)
 
     def print_terminal(self, text):
@@ -431,6 +425,9 @@ class BackendApi:
             self.process.terminate()
             self.print_terminal(f"\n[EditCode] {T['stop_msg']}\n")
 
+def run_js(code):
+    if api.window:
+        threading.Thread(target=lambda: api.window.evaluate_js(code), daemon=True).start()
 
 def fix_macos_menu():
     if platform.system() != 'Darwin':
@@ -444,7 +441,7 @@ def fix_macos_menu():
             if not main_menu: return
 
             main_menu.itemAtIndex_(0).setTitle_('EditCode')
-            
+
             total_items = main_menu.numberOfItems()
             if total_items > 4:
                 for i in range(total_items - 4, 0, -1):
@@ -459,10 +456,9 @@ def fix_macos_menu():
 
 def on_closing():
     if not api.allow_quit:
-        threading.Timer(0.1, lambda: api.window.evaluate_js('checkQuit()')).start()
+        run_js('checkQuit()')
         return False
     return True
-
 
 if __name__ == '__main__':
     api = BackendApi()
@@ -494,20 +490,20 @@ if __name__ == '__main__':
     
     menu_items = [
         Menu('Plik' if is_pl else 'File', [
-            MenuAction(f"Otwórz  ({CMD}O)", lambda: window.evaluate_js('openFile()')),
-            MenuAction(f"Zapisz  ({CMD}S)", lambda: window.evaluate_js('saveFile()'))
+            MenuAction(f"Otwórz  ({CMD}O)", lambda: run_js('openFile()')),
+            MenuAction(f"Zapisz  ({CMD}S)", lambda: run_js('saveFile()'))
         ]),
         Menu('Edycja' if is_pl else 'Edit', [
-            MenuAction(f"Cofnij  ({CMD}Z)", lambda: window.evaluate_js('if(editor) editor.trigger("keyboard", "undo", null);')),
-            MenuAction(f"Ponów  ({CMD}Y)", lambda: window.evaluate_js('if(editor) editor.trigger("keyboard", "redo", null);')),
-            MenuAction(f"Kopiuj  ({CMD}C)", lambda: window.evaluate_js('if(editor) editor.trigger("keyboard", "editor.action.clipboardCopyAction", null);')),
-            MenuAction(f"Wytnij  ({CMD}X)", lambda: window.evaluate_js('if(editor) editor.trigger("keyboard", "editor.action.clipboardCutAction", null);')),
-            MenuAction(f"Wklej  ({CMD}V)", lambda: window.evaluate_js('if(editor) editor.trigger("keyboard", "editor.action.clipboardPasteAction", null);')),
-            MenuAction(f"Znajdź  ({CMD}F)", lambda: window.evaluate_js('triggerFind()'))
+            MenuAction(f"Cofnij  ({CMD}Z)", lambda: run_js('if(editor) editor.trigger("keyboard", "undo", null);')),
+            MenuAction(f"Ponów  ({CMD}Y)", lambda: run_js('if(editor) editor.trigger("keyboard", "redo", null);')),
+            MenuAction(f"Kopiuj  ({CMD}C)", lambda: run_js('if(editor) editor.trigger("keyboard", "editor.action.clipboardCopyAction", null);')),
+            MenuAction(f"Wytnij  ({CMD}X)", lambda: run_js('if(editor) editor.trigger("keyboard", "editor.action.clipboardCutAction", null);')),
+            MenuAction(f"Wklej  ({CMD}V)", lambda: run_js('if(editor) editor.trigger("keyboard", "editor.action.clipboardPasteAction", null);')),
+            MenuAction(f"Znajdź  ({CMD}F)", lambda: run_js('triggerFind()'))
         ]),
         Menu('Uruchom' if is_pl else 'Run', [
-            MenuAction(f"Uruchom  ({CMD}Enter)", lambda: window.evaluate_js('runCode()')),
-            MenuAction("Zatrzymaj" if is_pl else "Stop", lambda: window.evaluate_js('stopCode()'))
+            MenuAction(f"Uruchom  ({CMD}Enter)", lambda: run_js('runCode()')),
+            MenuAction("Zatrzymaj" if is_pl else "Stop", lambda: run_js('stopCode()'))
         ])
     ]
 
