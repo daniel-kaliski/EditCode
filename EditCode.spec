@@ -1,7 +1,10 @@
 # -*- mode: python ; coding: utf-8 -*-
+import os
 
-block_cipher = None
+icon_file = 'icon.ico' if os.path.exists('icon.ico') else None
+added_files = [('icon.ico', '.')] if os.path.exists('icon.ico') else []
 
+# Odcinamy ciężkie biblioteki
 excluded_modules = [
     'tkinter', 'unittest', 'pydoc', 'pdb', 'email', 'http', 'xml',
     'matplotlib', 'numpy', 'pandas', 'scipy', 'PIL', 'PySide6',
@@ -13,7 +16,7 @@ a = Analysis(
     ['EditCode.py'],
     pathex=[],
     binaries=[],
-    datas=[('icon.ico', '.')], 
+    datas=added_files, 
     hiddenimports=[],
     hookspath=[],
     hooksconfig={},
@@ -21,11 +24,10 @@ a = Analysis(
     excludes=excluded_modules,
     win_no_prefer_redirects=False,
     win_private_assemblies=False,
-    cipher=block_cipher,
     noarchive=False,
 )
 
-pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
+pyz = PYZ(a.pure, a.zipped_data)
 
 exe = EXE(
     pyz,
@@ -35,15 +37,15 @@ exe = EXE(
     name='EditCode',
     debug=False,
     bootloader_ignore_signals=False,
-    strip=True,          
-    upx=True,            
-    console=False,       
+    strip=False,  
+    upx=True,     
+    console=False,
     disable_windowed_traceback=False,
-    argv_emulation=True, 
+    argv_emulation=True,
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon='icon.ico',
+    icon=icon_file, 
 )
 
 coll = COLLECT(
@@ -51,7 +53,7 @@ coll = COLLECT(
     a.binaries,
     a.zipfiles,
     a.datas,
-    strip=True,          
+    strip=False,  
     upx=True,
     upx_exclude=[],
     name='EditCode',
@@ -60,7 +62,7 @@ coll = COLLECT(
 app = BUNDLE(
     coll,
     name='EditCode.app',
-    icon='icon.ico', 
+    icon='icon.icns',
     bundle_identifier='com.danielkaliski.editcode',
     info_plist={
         'CFBundleShortVersionString': '1.0.0',
