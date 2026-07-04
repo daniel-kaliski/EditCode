@@ -1,3 +1,15 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+
+# ==============================================================================
+# Nazwa pliku: EditCode.py
+# 
+# Copyright (c) 2026 Daniel Kaliski
+# Ten kod jest objęty licencją GNU GENERAL PUBLIC LICENSE GPL-3.0.
+# Pełny tekst licencji znajduje się w pliku LICENSE lub na stronie:
+# https://opensource.org/license/gpl-3.0
+# ==============================================================================
+
 import webview
 from webview.menu import Menu, MenuAction
 import sys
@@ -7,9 +19,6 @@ import threading
 import json
 import platform
 
-# ==========================================
-# 0. PANCERNE WYKRYWANIE JĘZYKA (macOS & Windows)
-# ==========================================
 is_pl = False
 try:
     if platform.system() == 'Darwin':
@@ -38,9 +47,6 @@ T = {
     'find': "Szukaj" if is_pl else "Find"
 }
 
-# ==========================================
-# 1. FRONTEND: INTERFEJS Z ZAKŁADKAMI (HTML/JS)
-# ==========================================
 HTML_CONTENT = """
 <!DOCTYPE html>
 <html lang="pl">
@@ -74,7 +80,7 @@ HTML_CONTENT = """
         .tab-add:hover { color: #fff; }
         
         #editor-container { flex: 1; position: relative; background: var(--bg); }
-        #terminal { height: 200px; background: #0a0a0a; color: #00ff00; padding: 15px; overflow-y: auto; font-family: 'Menlo', 'Consolas', monospace; font-size: 14px; border-top: 1px solid #333; white-space: pre-wrap; word-wrap: break-word; }
+        #terminal { height: 200px; background: #0a0a0a; color: #00ff00; padding: 15px; overflow-y: auto; font-family: 'Menlo', 'Consolas', monospace; font-size: 12px; border-top: 1px solid #333; white-space: pre-wrap; word-wrap: break-word; }
     </style>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.40.0/min/vs/loader.min.js"></script>
 </head>
@@ -314,9 +320,6 @@ HTML_CONTENT = """
 </html>
 """
 
-# ==========================================
-# 2. BACKEND: LOGIKA SYSTEMOWA W PYTHONIE
-# ==========================================
 class BackendApi:
     def __init__(self):
         self.window = None
@@ -337,7 +340,6 @@ class BackendApi:
         return 'plaintext'
 
     def open_file_dialog(self):
-        # ZMIANA: Używamy nowej składni webview.FileDialog.OPEN
         result = self.window.create_file_dialog(webview.FileDialog.OPEN)
         if result and len(result) > 0:
             filepath = result[0]
@@ -352,7 +354,6 @@ class BackendApi:
     def save_file_dialog(self, content, current_filepath):
         filepath_to_save = current_filepath
         if not filepath_to_save:
-            # ZMIANA: Używamy nowej składni webview.FileDialog.SAVE
             result = self.window.create_file_dialog(webview.FileDialog.SAVE)
             if result and len(result) > 0:
                 filepath_to_save = result[0]
@@ -398,25 +399,20 @@ class BackendApi:
             try:
                 env = os.environ.copy()
                 
-                # --- KLUCZOWA POPRAWKA DLA SKOMPILOWANEJ APLIKACJI (.app / .exe) ---
                 if getattr(sys, 'frozen', False):
-                    # 1. Przebijamy "bańkę" PyInstallera - usuwamy jego fałszywe zmienne
                     env.pop('PYTHONHOME', None)
                     env.pop('PYTHONPATH', None)
                     env.pop('DYLD_LIBRARY_PATH', None)
                     env.pop('LD_LIBRARY_PATH', None)
                     
                     if platform.system() == 'Darwin':
-                        # 2. Wymuszamy, by macOS znalazł Twojego prawdziwego Pythona z bibliotekami
                         env['PATH'] = '/usr/local/bin:/opt/homebrew/bin:' + env.get('PATH', '/usr/bin:/bin')
                         cmd = ['python3', abs_filepath]
                     else:
                         cmd = ['python', abs_filepath]
                 else:
-                    # Skrypt uruchamiany normalnie z terminala
                     cmd = [sys.executable, abs_filepath]
 
-                # Niezależnie od kompilacji, sprawdzamy pliki JS
                 if abs_filepath.endswith('.js'):
                     cmd = ['node', abs_filepath]
 
@@ -426,7 +422,7 @@ class BackendApi:
                     stderr=subprocess.STDOUT, 
                     text=True, 
                     bufsize=1,
-                    env=env, # Przekazujemy wyczyszczone środowisko!
+                    env=env, 
                     cwd=os.path.dirname(abs_filepath)
                 )
                 
@@ -445,10 +441,6 @@ class BackendApi:
             self.process.terminate()
             self.print_terminal(f"\n[EditCode] {T['stop_msg']}\n")
 
-
-# ==========================================
-# 3. FIX MENU MACOS (Z opóźnieniem)
-# ==========================================
 def fix_macos_menu():
     if platform.system() != 'Darwin':
         return
@@ -495,35 +487,20 @@ def fix_macos_menu():
 
     threading.Timer(0.5, delayed_execution).start()
 
-
-# ==========================================
-# 4. START APLIKACJI I INICJALIZACJA
-# ==========================================
 if __name__ == '__main__':
     api = BackendApi()
     
-    window = webview.create_window(
-        title='EditCode', 
-        html=HTML_CONTENT, 
-        js_api=api, 
-        width=1100, 
-        height=750,
-        background_color='#1e1e1e'
-    )
-    api.set_window(window)
-    window.events.loaded += fix_macos_menu
-    
-   # Wykrywamy platformę, aby poprawnie zbudować nazwy skrótów
-    CMD = '⌘' if platform.system() == 'Darwin' else 'Ctrl'
-    
-    menu_items = [
-        Menu(T['file'], [
-            MenuAction(f"{T['open']}  ({CMD}O)", lambda: window.evaluate_js('openFile()')),
-            MenuAction(f"{T['save']}  ({CMD}S)", lambda: window.evaluate_js('saveFile()'))
-        ]),
-        Menu(T['tools'], [
-            MenuAction(f"{T['find']}  ({CMD}F)", lambda: window.evaluate_js('triggerFind()'))
-        ])
-    ]
 
-    webview.start(menu=menu_items, debug=False)
+window = webview.create_window(
+    'EditCode', 
+    html=HTML_CONTENT, 
+    js_api=api,
+    confirm_close=True,
+    min_size=(800, 600)
+)
+
+if platform.system() == 'Windows':
+    import ctypes
+    ctypes.windll.user32.SetMenu(ctypes.windll.user32.GetParent(window.native.handle), 0)
+
+webview.start(debug=False)
