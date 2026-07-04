@@ -14,38 +14,32 @@ jobs:
         os: [macos-latest, windows-latest]
 
     steps:
-    - name: Checkout repository
+    - name: Checkout code
       uses: actions/checkout@v4
 
     - name: Set up Python
       uses: actions/setup-python@v5
       with:
-        python-version: '3.11'
+        python-version: '3.11' 
 
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
-        pip install PyQt6 PyQt6-WebEngine pyinstaller
+        pip install pywebview pyinstaller
 
     - name: Build with PyInstaller
-      run: pyinstaller EditCode.spec
-
-    - name: Archive macOS app
-      if: matrix.os == 'macos-latest'
-      run: |
-        cd dist
-        tar -czf EditCode-macOS.tar.gz EditCode.app
-
-    - name: Upload macOS Artifact
-      if: matrix.os == 'macos-latest'
-      uses: actions/upload-artifact@v4
-      with:
-        name: EditCode-macOS
-        path: dist/EditCode-macOS.tar.gz
+      run: pyinstaller --clean EditCode.spec
 
     - name: Upload Windows Artifact
-      if: matrix.os == 'windows-latest'
+      if: runner.os == 'Windows'
       uses: actions/upload-artifact@v4
       with:
         name: EditCode-Windows
-        path: dist/EditCode
+        path: dist/EditCode.exe
+
+    - name: Upload macOS Artifact
+      if: runner.os == 'macOS'
+      uses: actions/upload-artifact@v4
+      with:
+        name: EditCode-macOS
+        path: dist/EditCode.app
