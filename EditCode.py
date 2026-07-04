@@ -490,17 +490,45 @@ def fix_macos_menu():
 if __name__ == '__main__':
     api = BackendApi()
     
+    window = webview.create_window(
+        title='EditCode', 
+        html=HTML_CONTENT, 
+        js_api=api, 
+        width=1100, 
+        height=750,
+        background_color='#1e1e1e',
+        confirm_close=True 
+    )
+    api.set_window(window)
+    
+    window.events.loaded += fix_macos_menu
+    
+    loc = {
+        'global.quitConfirmation': 'Czy na pewno chcesz zamknąć EditCode?' if is_pl else 'Do you really want to quit EditCode?',
+        'global.ok': 'OK',
+        'global.cancel': 'Anuluj' if is_pl else 'Cancel',
+        'global.quit': 'Zamknij' if is_pl else 'Quit',
+        'mac.menu.about': 'O programie EditCode' if is_pl else 'About EditCode',
+        'mac.menu.services': 'Usługi' if is_pl else 'Services',
+        'mac.menu.hide': 'Ukryj EditCode' if is_pl else 'Hide EditCode',
+        'mac.menu.hideOthers': 'Ukryj inne' if is_pl else 'Hide Others',
+        'mac.menu.showAll': 'Pokaż wszystkie' if is_pl else 'Show All',
+        'mac.menu.quit': 'Zakończ EditCode' if is_pl else 'Quit EditCode'
+    }
 
-window = webview.create_window(
-    'EditCode', 
-    html=HTML_CONTENT, 
-    js_api=api,
-    confirm_close=True,
-    min_size=(800, 600)
-)
+    CMD = '⌘' if platform.system() == 'Darwin' else 'Ctrl'
+    
+    menu_items = [
+        Menu(T['file'], [
+            MenuAction(f"{T['open']}  ({CMD}O)", lambda: window.evaluate_js('openFile()')),
+            MenuAction(f"{T['save']}  ({CMD}S)", lambda: window.evaluate_js('saveFile()'))
+        ]),
+        Menu(T['tools'], [
+            MenuAction(f"{T['find']}  ({CMD}F)", lambda: window.evaluate_js('triggerFind()'))
+        ])
+    ]
 
-if platform.system() == 'Windows':
-    import ctypes
-    ctypes.windll.user32.SetMenu(ctypes.windll.user32.GetParent(window.native.handle), 0)
-
-webview.start(debug=False)
+    if platform.system() == 'Darwin':
+        webview.start(menu=menu_items, localization=loc, debug=False)
+    else:
+        webview.start(localization=loc, debug=False)
