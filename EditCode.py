@@ -41,9 +41,6 @@ T = {
 # ==========================================
 # 1. FRONTEND: INTERFEJS Z ZAKŁADKAMI (HTML/JS)
 # ==========================================
-# ==========================================
-# 1. FRONTEND: INTERFEJS Z ZAKŁADKAMI (HTML/JS)
-# ==========================================
 HTML_CONTENT = """
 <!DOCTYPE html>
 <html lang="pl">
@@ -59,6 +56,11 @@ HTML_CONTENT = """
         .btn-run { color: #4CAF50; display: flex; align-items: center; gap: 5px; }
         .btn-stop { color: #F44336; }
         
+        /* Styl dla wbudowanego menu (tylko Windows) */
+        #win-menu { display: none; gap: 8px; margin-right: 15px; border-right: 1px solid #333; padding-right: 15px; }
+        .btn-menu { background: transparent; color: #ccc; font-weight: normal; }
+        .btn-menu:hover { background: #333; color: #fff; }
+        
         #tab-bar { display: flex; background: #151515; overflow-x: auto; border-bottom: 1px solid #333; height: 38px; }
         #tab-bar::-webkit-scrollbar { display: none; }
         
@@ -72,12 +74,18 @@ HTML_CONTENT = """
         .tab-add:hover { color: #fff; }
         
         #editor-container { flex: 1; position: relative; background: var(--bg); }
-        #terminal { height: 200px; background: #0a0a0a; color: #00ff00; padding: 15px; overflow-y: auto; font-family: 'Menlo', 'Consolas', monospace; font-size: 12px; border-top: 1px solid #333; white-space: pre-wrap; word-wrap: break-word; }
+        #terminal { height: 200px; background: #0a0a0a; color: #00ff00; padding: 15px; overflow-y: auto; font-family: 'Menlo', 'Consolas', monospace; font-size: 14px; border-top: 1px solid #333; white-space: pre-wrap; word-wrap: break-word; }
     </style>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.40.0/min/vs/loader.min.js"></script>
 </head>
 <body>
     <div id="toolbar">
+        <div id="win-menu">
+            <button class="btn-menu" onclick="openFile()" id="btn-open">Otwórz</button>
+            <button class="btn-menu" onclick="saveFile()" id="btn-save">Zapisz</button>
+            <button class="btn-menu" onclick="triggerFind()" id="btn-find">Szukaj</button>
+        </div>
+        
         <button class="btn-run" onclick="runCode()" id="btn-run">▶ Uruchom</button>
         <button class="btn-stop" onclick="stopCode()" id="btn-stop">■ Zatrzymaj</button>
     </div>
@@ -90,6 +98,7 @@ HTML_CONTENT = """
         // TŁUMACZENIA JS
         const userLang = navigator.language || navigator.userLanguage;
         const isEN = !userLang.toLowerCase().startsWith('pl');
+        const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
         
         const UI = {
             newFile: isEN ? "Untitled" : "Nowy plik",
@@ -97,15 +106,27 @@ HTML_CONTENT = """
             unsaved: isEN ? "Tab '{0}' has unsaved changes. Close anyway?" : "Karta '{0}' ma niezapisane zmiany. Zamknąć mimo to?",
             runBtn: isEN ? "▶ Run" : "▶ Uruchom",
             stopBtn: isEN ? "■ Stop" : "■ Zatrzymaj",
+            openBtn: isEN ? "Open" : "Otwórz",
+            saveBtn: isEN ? "Save" : "Zapisz",
+            findBtn: isEN ? "Find" : "Szukaj",
             termReady: isEN ? "> EditCode Terminal ready...\\n\\n" : "> Terminal EditCode gotowy...\\n\\n",
             errSave: isEN ? "\\n[Error] Save the file first (File -> Save) before running!\\n" : "\\n[Błąd] Najpierw zapisz plik (Plik -> Zapisz) przed jego uruchomieniem!\\n",
             openMsg: isEN ? "\\n[EditCode] Opened: " : "\\n[EditCode] Otwarto: ",
             saveMsg: isEN ? "\\n[EditCode] Saved: " : "\\n[EditCode] Zapisano: "
         };
 
+        // Podpinanie tekstów
         document.getElementById('btn-run').innerText = UI.runBtn;
         document.getElementById('btn-stop').innerText = UI.stopBtn;
+        document.getElementById('btn-open').innerText = UI.openBtn;
+        document.getElementById('btn-save').innerText = UI.saveBtn;
+        document.getElementById('btn-find').innerText = UI.findBtn;
         document.getElementById('terminal').innerText = UI.termReady;
+
+        // Aktywacja menu wewnątrz aplikacji tylko dla systemu Windows
+        if (!isMac) {
+            document.getElementById('win-menu').style.display = 'flex';
+        }
 
         // SYSTEM ZAKŁADEK (TABS)
         let tabs = [];
@@ -192,25 +213,21 @@ HTML_CONTENT = """
 
             if (!isEN) {
                 setInterval(function() {
-                    // 1. Tłumaczenie głównych pól
                     document.querySelectorAll('textarea[placeholder="Find"], input[placeholder="Find"]').forEach(function(e) { e.placeholder = 'Znajdź'; });
                     document.querySelectorAll('textarea[placeholder="Replace"], input[placeholder="Replace"]').forEach(function(e) { e.placeholder = 'Zamień'; });
                     
-                    // 2. Tłumaczenie licznika wyników
                     document.querySelectorAll('.matchesCount').forEach(function(e) {
                         if (e.innerText === 'No results') e.innerText = 'Brak wyników';
                         else if (e.innerText.indexOf(' of ') !== -1) e.innerText = e.innerText.replace(' of ', ' z ');
                     });
 
-                    // 3. Tłumaczenie "dymków" (tooltipów)
                     const tooltips = [
-                        // Najdłuższe i najbardziej specyficzne frazy MUSZĄ być na początku!
                         ['Toggle Replace mode', 'Przełącz tryb zamiany'],
                         ['Toggle Replace', 'Przełącz tryb zamiany'],
                         ['Replace All', 'Zamień wszystko'],
-                        ['Replace', 'Zamień'], // Krótkie "Zamień" dopiero po odrzuceniu dłuższych
-                        ['Find in Selection', 'Znajdź w zaznaczeniu'], // Monaco używa wielkiej litery 'S'
-                        ['Find in selection', 'Znajdź w zaznaczeniu'], // Zapasowe z małą literą
+                        ['Replace', 'Zamień'],
+                        ['Find in Selection', 'Znajdź w zaznaczeniu'],
+                        ['Find in selection', 'Znajdź w zaznaczeniu'],
                         ['Previous match', 'Poprzedni wynik'],
                         ['Next match', 'Następny wynik'],
                         ['Close (Escape)', 'Zamknij (Escape)'],
@@ -282,9 +299,6 @@ HTML_CONTENT = """
 
         function stopCode() { pywebview.api.stop_code(); }
 
-        // ==========================================
-        // GLOBALNY NASŁUCH SKRÓTÓW (Ostateczne zabezpieczenie)
-        // ==========================================
         window.addEventListener('keydown', function(e) {
             if (e.ctrlKey || e.metaKey) {
                 let key = e.key.toLowerCase();
