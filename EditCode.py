@@ -70,17 +70,14 @@ HTML_CONTENT = """
         .drop-item:hover .shortcut { color: #222; }
         
         #toolbar { background: var(--panel); padding: 10px 15px; display: flex; gap: 6px; align-items: center; border-bottom: 1px solid #333; }
- 
+        
         button.tool-btn { 
             border: none; padding: 6px 14px; border-radius: 6px; cursor: pointer; 
             font-size: 16px; transition: 0.2s; background: transparent; 
             display: flex; align-items: center; justify-content: center; color: #ffffff; 
-            outline: none; /* Natywne wyłączenie ramki */
-        }
-        button.tool-btn:focus, button.tool-btn:active {
             outline: none;
-            box-shadow: none;
         }
+        button.tool-btn:focus, button.tool-btn:active { outline: none; box-shadow: none; }
         button.tool-btn:hover { background: rgba(255, 255, 255, 0.1); color: #cccccc; }
         
         #tab-bar { display: flex; background: #1a1a1a; overflow-x: auto; border-bottom: 1px solid #333; height: 38px; }
@@ -724,56 +721,38 @@ def setup_macos_open_handler(api):
         
     def apply_handler():
         try:
-            from AppKit import NSAppleEventManager, NSObject
+            from AppKit import NSApplication
             import objc
-
-            class OpenFileHandler(NSObject):
-                @objc.typedSelector(b'v@:@@')
-                def handleEvent_withReplyEvent_(self, event, replyEvent):
-                    try:
-                        desc = event.paramDescriptorForKeyword_(1128418861)
-                        if not desc: return
-                        
-                        def process_item(item):
-                            try:
-                                furl = item.coerceToDescriptorType_(1718973036)
-                                if furl:
-                                    data = furl.data()
-                                    if data:
-                                        url_str = bytes(data).decode('utf-8')
-                                        if url_str.startswith('file://'):
-                                            from urllib.parse import unquote
-                                            api.open_specific_file(unquote(url_str[7:]))
-                                            return
-                            except: pass
-
-                            s = item.stringValue()
-                            if s:
-                                if s.startswith('file://'):
-                                    from urllib.parse import unquote
-                                    api.open_specific_file(unquote(s[7:]))
-                                else:
-                                    api.open_specific_file(s)
-
-                        num_items = desc.numberOfItems()
-                        if num_items > 0:
-                            for i in range(1, num_items + 1):
-                                process_item(desc.descriptorAtIndex_(i))
-                        else:
-                            process_item(desc)
-                    except Exception:
-                        pass
-
-            global macos_open_handler
-            macos_open_handler = OpenFileHandler.alloc().init()
-            manager = NSAppleEventManager.sharedAppleEventManager()
             
-            manager.setEventHandler_andSelector_forEventClass_andEventID_(
-                macos_open_handler,
-                objc.selector(macos_open_handler.handleEvent_withReplyEvent_, signature=b'v@:@@'),
-                1634039412,
-                1868853091
-            )
+            app = NSApplication.sharedApplication()
+            delegate = app.delegate()
+            if not delegate:
+                return
+            
+            delegate_class = type(delegate)
+            
+            if not delegate.respondsToSelector_("application:openFile:"):
+                def application_openFile_(self, sender, filename):
+                    try:
+                        api.open_specific_file(str(filename))
+                    except Exception: pass
+                    return True
+                
+                method = objc.selector(application_openFile_, signature=b'Z@:@@')
+                objc.classAddMethod(delegate_class, b'application:openFile:', method)
+                
+            if not delegate.respondsToSelector_("application:openFiles:"):
+                def application_openFiles_(self, sender, filenames):
+                    try:
+                        for f in filenames:
+                            api.open_specific_file(str(f))
+                        if hasattr(sender, 'replyToOpenOrPrint_'):
+                            sender.replyToOpenOrPrint_(1)
+                    except Exception: pass
+                    
+                method_plural = objc.selector(application_openFiles_, signature=b'v@:@@')
+                objc.classAddMethod(delegate_class, b'application:openFiles:', method_plural)
+                
         except Exception:
             pass 
 
