@@ -417,9 +417,13 @@ HTML_CONTENT = """
                             let initialCode = isEN ? '# Welcome to EditCode!\\n' : '# Witaj w EditCode!\\n';
                             addTab('', initialCode, 'python');
                         }
+                        
+                        pywebview.api.app_ready();
+                        
                     }).catch(function() {
                         let initialCode = isEN ? '# Welcome to EditCode!\\n' : '# Witaj w EditCode!\\n';
                         addTab('', initialCode, 'python');
+                        pywebview.api.app_ready();
                     });
                 } else {
                     setTimeout(loadStartupFile, 50);
@@ -490,6 +494,44 @@ class BackendApi:
         self.process = None
         self.allow_quit = False 
         self.has_unsaved = False 
+        self._is_ready = False
+
+    def app_ready(self):
+        if self._is_ready: return
+        self._is_ready = True
+        
+        if platform.system() == 'Darwin':
+            def apply_fix():
+                try:
+                    from AppKit import NSApplication
+                    app = NSApplication.sharedApplication()
+                    main_menu = app.mainMenu()
+                    if main_menu:
+                        allowed_titles = ['Plik', 'Edycja', 'Uruchom'] if is_pl else ['File', 'Edit', 'Run']
+                        seen_titles = set()                       
+                        for i in range(main_menu.numberOfItems() - 1, 0, -1):
+                            item = main_menu.itemAtIndex_(i)
+                            if item:
+                                title = str(item.title()).strip()
+                                if title not in allowed_titles:
+                                    main_menu.removeItemAtIndex_(i)
+                                elif title in seen_titles:
+                                    main_menu.removeItemAtIndex_(i)
+                                else:
+                                    seen_titles.add(title)
+                except Exception:
+                    pass
+
+            if APP_WINDOW: APP_WINDOW.show()
+
+            try:
+                from PyObjCTools import AppHelper
+                for delay in [0.1, 0.5, 1.2, 2.5]:
+                    threading.Timer(delay, lambda: AppHelper.callAfter(apply_fix)).start()
+            except:
+                pass
+        else:
+            if APP_WINDOW: APP_WINDOW.show()
 
     def open_specific_file(self, filepath):
         if not APP_WINDOW: return
@@ -526,11 +568,19 @@ class BackendApi:
 
     def get_startup_file(self):
         if len(sys.argv) > 1:
-            filepath = " ".join(sys.argv[1:])
-            filepath = filepath.strip('"').strip("'")
-            filepath = os.path.abspath(filepath)
-            
-            if os.path.exists(filepath):
+            filepath = None
+            joined_path = " ".join(sys.argv[1:]).strip('"').strip("'")
+            if os.path.exists(joined_path) and os.path.isfile(joined_path):
+                filepath = joined_path
+            else:
+                for arg in sys.argv[1:]:
+                    clean_arg = arg.strip('"').strip("'")
+                    if os.path.exists(clean_arg) and os.path.isfile(clean_arg):
+                        filepath = clean_arg
+                        break
+
+            if filepath:
+                filepath = os.path.abspath(filepath)
                 content = ""
                 try:
                     with open(filepath, 'r', encoding='utf-8') as f:
@@ -662,33 +712,6 @@ class BackendApi:
             self.process.terminate()
             self.print_terminal(f"\n[EditCode] {T['stop_msg']}\n")
 
-def fix_macos_menu():
-    if platform.system() != 'Darwin':
-        return
-        
-    def apply_fix():
-        try:
-            from AppKit import NSApplication
-            app = NSApplication.sharedApplication()
-            main_menu = app.mainMenu()
-            if not main_menu: return
-
-            main_menu.itemAtIndex_(0).setTitle_('EditCode')
-            
-            allowed_titles = ['Plik', 'Edycja', 'Uruchom', 'File', 'Edit', 'Run']
-            for i in range(main_menu.numberOfItems() - 1, 0, -1):
-                item = main_menu.itemAtIndex_(i)
-                if item:
-                    title = str(item.title()).strip()
-                    if title not in allowed_titles:
-                        main_menu.removeItemAtIndex_(i)
-        except Exception as e:
-            pass 
-
-    from PyObjCTools import AppHelper
-    for delay in [0.2, 1.0, 2.5, 4.0]:
-        threading.Timer(delay, lambda: AppHelper.callAfter(apply_fix)).start()
-
 def setup_macos_open_handler(api):
     if platform.system() != 'Darwin':
         return
@@ -738,8 +761,7 @@ def setup_macos_open_handler(api):
             pass 
 
     from PyObjCTools import AppHelper
-    for delay in [0.5, 2.0]:
-        threading.Timer(delay, lambda: AppHelper.callAfter(apply_handler)).start()
+    AppHelper.callAfter(apply_handler)
 
 
 def on_closing():
@@ -776,6 +798,10 @@ def on_closing():
         threading.Thread(target=trigger_js, daemon=True).start()
         return False
 
+def failsafe_show(api_instance):
+    if not api_instance._is_ready and APP_WINDOW:
+        api_instance.app_ready()
+
 if __name__ == '__main__':
     api = BackendApi()
     
@@ -786,12 +812,13 @@ if __name__ == '__main__':
         width=1100, 
         height=750,
         background_color='#1e1e1e',
-        confirm_close=False 
+        confirm_close=False,
+        hidden=True 
     )
     
     APP_WINDOW.events.closing += on_closing
-    APP_WINDOW.events.loaded += fix_macos_menu
     APP_WINDOW.events.loaded += lambda: setup_macos_open_handler(api)
+    APP_WINDOW.events.loaded += lambda: threading.Timer(3.0, failsafe_show, args=(api,)).start()
     
     loc = {
         'mac.menu.about': 'O programie EditCode',
