@@ -80,6 +80,39 @@ HTML_CONTENT = """
         button.tool-btn:focus, button.tool-btn:active { outline: none; box-shadow: none; }
         button.tool-btn:hover { background: rgba(255, 255, 255, 0.1); color: #cccccc; }
         
+        [data-tooltip] { position: relative; }
+        [data-tooltip]::after {
+            content: attr(data-tooltip);
+            position: absolute;
+            top: 130%;
+            left: 50%;
+            transform: translateX(-50%);
+            background: #252525;
+            color: #eee;
+            padding: 5px 10px;
+            border-radius: 4px;
+            font-size: 11px;
+            white-space: nowrap;
+            opacity: 0;
+            visibility: hidden;
+            transition: opacity 0.2s ease, top 0.2s ease;
+            z-index: 9999;
+            border: 1px solid #444;
+            pointer-events: none;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.5);
+        }
+        [data-tooltip]:hover::after {
+            opacity: 1;
+            visibility: visible;
+            top: 115%;
+        }
+        
+        /* NAPRAWA: Zabezpieczenie lewego Tooltipa na macOS przed ucięciem */
+        #btn-run[data-tooltip]::after {
+            left: 5px;
+            transform: none;
+        }
+        
         #tab-bar { display: flex; background: #1a1a1a; overflow-x: auto; border-bottom: 1px solid #333; height: 38px; }
         #tab-bar::-webkit-scrollbar { display: none; }
         
@@ -120,8 +153,8 @@ HTML_CONTENT = """
 </head>
 <body>
     <div id="toolbar">
-        <button class="tool-btn" onclick="runCode()" id="btn-run" title="Uruchom (⌘Enter)"></button>
-        <button class="tool-btn" onclick="stopCode()" id="btn-stop" title="Zatrzymaj"></button>
+        <button class="tool-btn" onclick="runCode()" id="btn-run" tabindex="-1" data-tooltip=""></button>
+        <button class="tool-btn" onclick="stopCode()" id="btn-stop" tabindex="-1" data-tooltip=""></button>
     </div>
     
     <div id="tab-bar"></div>
@@ -222,8 +255,8 @@ HTML_CONTENT = """
             });
         }
 
-        document.getElementById('btn-run').title = isEN ? (isMac ? "Run (⌘Enter)" : "Run (Ctrl+Enter)") : (isMac ? "Uruchom (⌘Enter)" : "Uruchom (Ctrl+Enter)");
-        document.getElementById('btn-stop').title = isEN ? "Stop" : "Zatrzymaj";
+        document.getElementById('btn-run').setAttribute('data-tooltip', isEN ? (isMac ? "Run (⌘Enter)" : "Run (Ctrl+Enter)") : (isMac ? "Uruchom (⌘Enter)" : "Uruchom (Ctrl+Enter)"));
+        document.getElementById('btn-stop').setAttribute('data-tooltip', isEN ? "Stop" : "Zatrzymaj");
 
         document.getElementById('btn-run').innerText = UI.runBtn;
         document.getElementById('btn-stop').innerText = UI.stopBtn;
@@ -421,11 +454,13 @@ HTML_CONTENT = """
                         }
                         
                         pywebview.api.app_ready();
+                        if (editor) editor.focus();
                         
                     }).catch(function() {
                         let initialCode = isEN ? '# Welcome to EditCode!\\n' : '# Witaj w EditCode!\\n';
                         addTab('', initialCode, 'python');
                         pywebview.api.app_ready();
+                        if (editor) editor.focus();
                     });
                 } else {
                     setTimeout(loadStartupFile, 50);
@@ -497,6 +532,10 @@ class BackendApi:
         self.allow_quit = False 
         self.has_unsaved = False 
         self._is_ready = False
+        
+        self.ui_lock = threading.Lock()
+        
+        self.manually_stopped = False
 
     def app_ready(self):
         if self._is_ready: return
@@ -564,10 +603,12 @@ class BackendApi:
                 }} catch(e) {{}}
             }})();
             """
-            try:
-                APP_WINDOW.evaluate_js(js)
-            except:
-                pass
+        
+            with self.ui_lock:
+                try:
+                    APP_WINDOW.evaluate_js(js)
+                except:
+                    pass
 
     def get_startup_file(self):
         if len(sys.argv) > 1:
@@ -621,10 +662,11 @@ class BackendApi:
 
     def print_terminal(self, text):
         if APP_WINDOW:
-            try:
-                APP_WINDOW.evaluate_js(f"appendTerminal({json.dumps(text)})")
-            except:
-                pass
+            with self.ui_lock:
+                try:
+                    APP_WINDOW.evaluate_js(f"appendTerminal({json.dumps(text)})")
+                except:
+                    pass
 
     def get_lang(self, filepath):
         if filepath.endswith('.py'): return 'python'
@@ -667,6 +709,11 @@ class BackendApi:
 
     def run_code(self, filepath):
         if not filepath: return
+ 
+        if self.process and self.process.poll() is None:
+            self.stop_code()
+            
+        self.manually_stopped = False
         abs_filepath = os.path.abspath(filepath)
         filename = os.path.basename(abs_filepath)
         self.print_terminal(f"\n[EditCode] {T['run_msg']} {filename}\n")
@@ -704,7 +751,13 @@ class BackendApi:
                     self.print_terminal(line)
                     
                 self.process.wait()
-                self.print_terminal(f"\n[EditCode] {T['done_msg']} {self.process.returncode})\n")
+                
+                # Zamiast dublować funkcje, to jeden jedyny wątek raportuje poprawnie zakończenie/zatrzymanie
+                if self.manually_stopped:
+                    self.print_terminal(f"\n[EditCode] {T['stop_msg']}\n")
+                else:
+                    self.print_terminal(f"\n[EditCode] {T['done_msg']} {self.process.returncode})\n")
+                    
             except Exception as e:
                 self.print_terminal(f"\n[{T['err']}] Nie udało się uruchomić procesu: {str(e)}\n")
 
@@ -712,8 +765,11 @@ class BackendApi:
 
     def stop_code(self):
         if self.process and self.process.poll() is None:
-            self.process.terminate()
-            self.print_terminal(f"\n[EditCode] {T['stop_msg']}\n")
+            self.manually_stopped = True
+            try:
+                self.process.terminate()
+            except Exception:
+                pass
 
 
 def setup_macos_open_handler(api):
@@ -731,7 +787,7 @@ def setup_macos_open_handler(api):
                 return
             
             delegate_class = type(delegate)
-
+            
             if not delegate.respondsToSelector_("application:openFile:"):
                 def application_openFile_(self, sender, filename):
                     try:
