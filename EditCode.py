@@ -19,6 +19,7 @@ import threading
 import json
 import platform
 
+is_pl = False
 try:
     if platform.system() == 'Darwin':
         out = subprocess.check_output(['defaults', 'read', '-g', 'AppleLanguages']).decode('utf-8')
@@ -490,6 +491,39 @@ class BackendApi:
         self.allow_quit = False 
         self.has_unsaved = False 
 
+    def open_specific_file(self, filepath):
+        if not APP_WINDOW: return
+        if os.path.exists(filepath):
+            content = ""
+            try:
+                with open(filepath, 'r', encoding='utf-8') as f:
+                    content = f.read()
+            except UnicodeDecodeError:
+                try:
+                    with open(filepath, 'r', encoding='mbcs', errors='replace') as f:
+                        content = f.read()
+                except Exception: pass
+            except Exception: pass
+            
+            lang = self.get_lang(filepath)
+            
+            fp_json = json.dumps(filepath)
+            ct_json = json.dumps(content)
+            lg_json = json.dumps(lang)
+            
+            js = f"""
+            (function() {{
+                try {{
+                    addTab({fp_json}, {ct_json}, {lg_json});
+                    appendTerminal(UI.openMsg + {fp_json} + "\\n");
+                }} catch(e) {{}}
+            }})();
+            """
+            try:
+                APP_WINDOW.evaluate_js(js)
+            except:
+                pass
+
     def get_startup_file(self):
         if len(sys.argv) > 1:
             filepath = " ".join(sys.argv[1:])
@@ -505,13 +539,10 @@ class BackendApi:
                     try:
                         with open(filepath, 'r', encoding='mbcs', errors='replace') as f:
                             content = f.read()
-                    except Exception:
-                        pass
-                except Exception:
-                    pass
+                    except Exception: pass
+                except Exception: pass
                 
-                if content is not None:
-                    return {'filepath': filepath, 'content': content, 'lang': self.get_lang(filepath)}
+                return {'filepath': filepath, 'content': content, 'lang': self.get_lang(filepath)}
         return None
 
     def set_unsaved(self, state):
@@ -658,6 +689,58 @@ def fix_macos_menu():
     for delay in [0.2, 1.0, 2.5, 4.0]:
         threading.Timer(delay, lambda: AppHelper.callAfter(apply_fix)).start()
 
+def setup_macos_open_handler(api):
+    if platform.system() != 'Darwin':
+        return
+        
+    def apply_handler():
+        try:
+            from AppKit import NSAppleEventManager, NSObject
+            import objc
+
+            class OpenFileHandler(NSObject):
+                @objc.typedSelector(b'v@:@@')
+                def handleEvent_withReplyEvent_(self, event, replyEvent):
+                    try:
+                        desc = event.paramDescriptorForKeyword_(1128418861)
+                        if not desc: return
+                        
+                        num_items = desc.numberOfItems()
+                        if num_items > 0:
+                            for i in range(1, num_items + 1):
+                                url_desc = desc.descriptorAtIndex_(i)
+                                if url_desc:
+                                    url_str = url_desc.stringValue()
+                                    if url_str and url_str.startswith('file://'):
+                                        from urllib.parse import unquote
+                                        filepath = unquote(url_str[7:])
+                                        api.open_specific_file(filepath)
+                        else:
+                            url_str = desc.stringValue()
+                            if url_str and url_str.startswith('file://'):
+                                from urllib.parse import unquote
+                                filepath = unquote(url_str[7:])
+                                api.open_specific_file(filepath)
+                    except Exception:
+                        pass
+
+            global macos_open_handler
+            macos_open_handler = OpenFileHandler.alloc().init()
+            manager = NSAppleEventManager.sharedAppleEventManager()
+            
+            manager.setEventHandler_andSelector_forEventClass_andEventID_(
+                macos_open_handler,
+                objc.selector(macos_open_handler.handleEvent_withReplyEvent_, signature=b'v@:@@'),
+                1634039412,
+                1868853091
+            )
+        except Exception:
+            pass 
+
+    from PyObjCTools import AppHelper
+    for delay in [0.5, 2.0]:
+        threading.Timer(delay, lambda: AppHelper.callAfter(apply_handler)).start()
+
 
 def on_closing():
     if api.allow_quit:
@@ -708,6 +791,7 @@ if __name__ == '__main__':
     
     APP_WINDOW.events.closing += on_closing
     APP_WINDOW.events.loaded += fix_macos_menu
+    APP_WINDOW.events.loaded += lambda: setup_macos_open_handler(api)
     
     loc = {
         'mac.menu.about': 'O programie EditCode',
