@@ -18,7 +18,6 @@ import subprocess
 import threading
 import json
 import platform
-import time
 
 is_pl = False
 try:
@@ -74,6 +73,7 @@ HTML_CONTENT = """
         .tab-add:hover { color: #fff; }
         
         #editor-container { flex: 1; position: relative; background: var(--bg); }
+        
         #terminal { height: 200px; background: #0a0a0a; color: #00ff00; padding: 15px; overflow-y: auto; font-family: 'Menlo', 'Consolas', monospace; font-size: 12px; border-top: 1px solid #333; white-space: pre-wrap; word-wrap: break-word; }
         
         #exit-overlay { 
@@ -113,8 +113,8 @@ HTML_CONTENT = """
             <div class="exit-icon" id="exit-icon">⚠️</div>
             <div class="exit-text" id="exit-msg">Masz niezapisane zmiany!<br>Czy na pewno chcesz zakończyć bez zapisywania?</div>
             <div class="exit-buttons">
-                <button class="btn-modal btn-cancel" onclick="hideQuit()" id="btn-cancel">Anuluj</button>
-                <button class="btn-modal btn-confirm" onclick="confirmQuit()" id="btn-confirm">Zakończ</button>
+                <button class="btn-modal btn-cancel" onclick="hideModal()" id="btn-cancel">Anuluj</button>
+                <button class="btn-modal btn-confirm" onclick="confirmModal()" id="btn-confirm">Zakończ</button>
             </div>
         </div>
     </div>
@@ -127,7 +127,7 @@ HTML_CONTENT = """
         const UI = {
             newFile: isEN ? "Untitled" : "Nowy plik",
             closeTab: isEN ? "Close tab" : "Zamknij kartę",
-            unsaved: isEN ? "Tab '{0}' has unsaved changes. Close anyway?" : "Karta '{0}' ma niezapisane zmiany. Zamknąć mimo to?",
+            unsavedTab: isEN ? "File '{0}' has unsaved changes.<br>Close anyway?" : "Plik '{0}' ma niezapisane zmiany.<br>Zamknąć mimo to?",
             runBtn: "▶", 
             stopBtn: "■",
             termReady: isEN ? "> EditCode Terminal ready...\\n\\n" : "> Terminal EditCode gotowy...\\n\\n",
@@ -136,7 +136,8 @@ HTML_CONTENT = """
             saveMsg: isEN ? "\\n[EditCode] Saved: " : "\\n[EditCode] Zapisano: ",
             quitUnsaved: isEN ? "You have unsaved changes!<br>Are you sure you want to quit without saving?" : "Masz niezapisane zmiany!<br>Czy na pewno chcesz zakończyć bez zapisywania?",
             cancelBtn: isEN ? "Cancel" : "Anuluj",
-            quitBtn: isEN ? "Quit" : "Zakończ"
+            quitBtn: isEN ? "Quit" : "Zakończ",
+            closeBtn: isEN ? "Close" : "Zamknij"
         };
 
         document.getElementById('btn-run').title = isEN ? (isMac ? "Run (⌘Enter)" : "Run (Ctrl+Enter)") : (isMac ? "Uruchom (⌘Enter)" : "Uruchom (Ctrl+Enter)");
@@ -168,6 +169,11 @@ HTML_CONTENT = """
             });
             html += `<div class="tab-add" onclick="addTab('', '', 'python')" title="${UI.newFile}">+</div>`;
             document.getElementById('tab-bar').innerHTML = html;
+            
+            try {
+                let hasUnsaved = tabs.some(t => !t.saved);
+                pywebview.api.set_unsaved(hasUnsaved);
+            } catch(e) {}
         }
 
         function addTab(filepath, content, lang) {
@@ -193,12 +199,50 @@ HTML_CONTENT = """
             renderTabs();
         }
 
+        let pendingAction = null;
+        let pendingData = null;
+
+        function showModal(msg, action, data) {
+            document.getElementById('exit-msg').innerHTML = msg;
+            document.getElementById('exit-overlay').style.display = 'flex';
+            pendingAction = action;
+            pendingData = data;
+            if (action === 'closeTab') {
+                document.getElementById('btn-confirm').innerText = UI.closeBtn;
+            } else {
+                document.getElementById('btn-confirm').innerText = UI.quitBtn;
+            }
+        }
+
+        function hideModal() { 
+            document.getElementById('exit-overlay').style.display = 'none'; 
+            pendingAction = null;
+            pendingData = null;
+        }
+
+        function confirmModal() {
+            if (pendingAction === 'quit') {
+                hideModal(); 
+                setTimeout(function() {
+                    pywebview.api.force_quit();
+                }, 100);
+            } else if (pendingAction === 'closeTab') {
+                forceCloseTab(pendingData);
+                hideModal();
+            }
+        }
+
         function closeTab(id) {
             let tab = tabs.find(t => t.id === id);
             if (!tab.saved) {
-                let msg = UI.unsaved.replace('{0}', tab.filename);
-                if (!confirm(msg)) return;
+                let msg = UI.unsavedTab.replace('{0}', tab.filename);
+                showModal(msg, 'closeTab', id);
+                return;
             }
+            forceCloseTab(id);
+        }
+
+        function forceCloseTab(id) {
             tabs = tabs.filter(t => t.id !== id);
             if (tabs.length === 0) {
                 addTab('', '', 'python'); 
@@ -207,11 +251,29 @@ HTML_CONTENT = """
             } else {
                 renderTabs();
             }
+            try { pywebview.api.set_unsaved(tabs.some(t => !t.saved)); } catch(e) {}
         }
 
         require.config({ paths: { 'vs': 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.40.0/min/vs' }});
         require(['vs/editor/editor.main'], function() {
-            let initialCode = isEN ? '# Welcome to EditCode!' : '# Witaj w EditCode!';
+            let initialCode = isEN ? '# Welcome to EditCode!\\n' : '# Witaj w EditCode!\\n';
+            monaco.languages.registerCompletionItemProvider('python', {
+                provideCompletionItems: function(model, position) {
+                    var word = model.getWordUntilPosition(position);
+                    var range = { startLineNumber: position.lineNumber, endLineNumber: position.lineNumber, startColumn: word.startColumn, endColumn: word.endColumn };
+                    return {
+                        suggestions: [
+                            { label: 'def', kind: monaco.languages.CompletionItemKind.Snippet, insertText: 'def ${1:name}(${2:args}):\\n\\t${3:pass}', insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet, documentation: 'Definicja funkcji', range: range },
+                            { label: 'if', kind: monaco.languages.CompletionItemKind.Snippet, insertText: 'if ${1:condition}:\\n\\t${2:pass}', insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet, documentation: 'Instrukcja if', range: range },
+                            { label: 'for', kind: monaco.languages.CompletionItemKind.Snippet, insertText: 'for ${1:item} in ${2:iterable}:\\n\\t${3:pass}', insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet, documentation: 'Pętla for', range: range },
+                            { label: 'class', kind: monaco.languages.CompletionItemKind.Snippet, insertText: 'class ${1:Name}:\\n\\tdef __init__(self):\\n\\t\\t${2:pass}', insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet, documentation: 'Definicja klasy', range: range },
+                            { label: 'while', kind: monaco.languages.CompletionItemKind.Snippet, insertText: 'while ${1:condition}:\\n\\t${2:pass}', insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet, documentation: 'Pętla while', range: range },
+                            { label: 'try', kind: monaco.languages.CompletionItemKind.Snippet, insertText: 'try:\\n\\t${1:pass}\\nexcept ${2:Exception} as ${3:e}:\\n\\t${4:raise}', insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet, documentation: 'Blok try/except', range: range },
+                            { label: 'main', kind: monaco.languages.CompletionItemKind.Snippet, insertText: 'if __name__ == "__main__":\\n\\t${1:main()}', insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet, documentation: 'Punkt wejścia programu', range: range }
+                        ]
+                    };
+                }
+            });
             
             editor = monaco.editor.create(document.getElementById('editor-container'), {
                 value: '',
@@ -233,7 +295,6 @@ HTML_CONTENT = """
             if (!isEN) {
                 setInterval(function() {
                     let findWidget = document.querySelector('.find-widget');
-                    
                     if (findWidget) {
                         findWidget.querySelectorAll('textarea[placeholder="Find"], input[placeholder="Find"]').forEach(function(e) { e.placeholder = 'Znajdź'; });
                         findWidget.querySelectorAll('textarea[placeholder="Replace"], input[placeholder="Replace"]').forEach(function(e) { e.placeholder = 'Zamień'; });
@@ -312,13 +373,9 @@ HTML_CONTENT = """
             if (!hasUnsaved) {
                 pywebview.api.force_quit();
             } else {
-                document.getElementById('exit-msg').innerHTML = UI.quitUnsaved;
-                document.getElementById('exit-overlay').style.display = 'flex';
+                showModal(UI.quitUnsaved, 'quit', null);
             }
         }
-        
-        function hideQuit() { document.getElementById('exit-overlay').style.display = 'none'; }
-        function confirmQuit() { pywebview.api.force_quit(); }
     </script>
 </body>
 </html>
@@ -329,19 +386,32 @@ class BackendApi:
         self.window = None
         self.process = None
         self.allow_quit = False 
+        self.has_unsaved = False 
 
     def set_window(self, window):
         self.window = window
+        
+    def set_unsaved(self, state):
+        self.has_unsaved = state
 
     def force_quit(self):
         self.allow_quit = True
         self.stop_code()
-        if self.window:
-            try:
-                self.window.destroy()
-            except:
-                pass
-        os._exit(0)
+        
+        def kill_app():
+            import time
+            time.sleep(0.3)
+            
+            if self.window:
+                try:
+                    self.window.destroy()
+                except Exception:
+                    pass
+            if platform.system() == 'Windows':
+                time.sleep(0.1)
+                os._exit(0)
+                
+        threading.Thread(target=kill_app, daemon=True).start()
 
     def print_terminal(self, text):
         if self.window:
@@ -443,44 +513,60 @@ def fix_macos_menu():
         
     def apply_fix():
         try:
-            from AppKit import NSApplication, NSMenu
+            from AppKit import NSApplication
             app = NSApplication.sharedApplication()
-            old_menu = app.mainMenu()
-            if not old_menu: return
+            main_menu = app.mainMenu()
+            if not main_menu: return
 
-            if old_menu.numberOfItems() == 4: return
-
-            new_menu = NSMenu.alloc().init()
-            app_menu_item = old_menu.itemAtIndex_(0).copy()
-            new_menu.addItem_(app_menu_item)
+            main_menu.itemAtIndex_(0).setTitle_('EditCode')
             
-            for i in range(old_menu.numberOfItems()):
-                item = old_menu.itemAtIndex_(i)
-                title = str(item.title()).strip()
-                if title in ['Plik', 'Edycja', 'Uruchom']:
-                    new_menu.addItem_(item.copy())
-                    
-            app.setMainMenu_(new_menu)
+            allowed_titles = ['Plik', 'Edycja', 'Uruchom', 'File', 'Edit', 'Run']
+            for i in range(main_menu.numberOfItems() - 1, 0, -1):
+                item = main_menu.itemAtIndex_(i)
+                if item:
+                    title = str(item.title()).strip()
+                    if title not in allowed_titles:
+                        main_menu.removeItemAtIndex_(i)
         except Exception as e:
             pass 
 
     from PyObjCTools import AppHelper
-    for delay in [0.3, 0.9, 2.0]:
+    for delay in [0.2, 1.0, 2.5, 4.0]:
         threading.Timer(delay, lambda: AppHelper.callAfter(apply_fix)).start()
 
 def on_closing():
-    if not api.allow_quit:
+    if api.allow_quit:
+        return True
+        
+    if not api.has_unsaved:
+        api.stop_code()
+        api.allow_quit = True
+        return True
+        
+    if platform.system() == 'Windows':
+        import ctypes
+        res = ctypes.windll.user32.MessageBoxW(
+            0, 
+            "Masz niezapisane zmiany w edytorze.\nCzy na pewno chcesz zakończyć bez zapisywania?", 
+            "EditCode - Ostrzeżenie", 
+            262196
+        )
+        if res == 6: 
+            api.stop_code()
+            api.allow_quit = True
+            return True
+        return False
+    else:
+        import time
         def trigger_js():
-            time.sleep(0.2)
+            time.sleep(0.1)
             if api.window:
                 try:
                     api.window.evaluate_js('checkQuit()')
                 except:
                     pass
-                    
         threading.Thread(target=trigger_js, daemon=True).start()
         return False
-    return True
 
 if __name__ == '__main__':
     api = BackendApi()
