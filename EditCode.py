@@ -25,9 +25,15 @@ try:
         out = subprocess.check_output(['defaults', 'read', '-g', 'AppleLanguages']).decode('utf-8')
         if 'pl' in out:
             is_pl = True
-    else:
+    elif platform.system() == 'Windows':
+        import ctypes
         import locale
-        lang = os.environ.get('LANG', '') or locale.getdefaultlocale()[0] or 'en'
+        lang_id = ctypes.windll.kernel32.GetUserDefaultUILanguage()
+        lang = locale.windows_locale.get(lang_id, 'en')
+        if lang.lower().startswith('pl'):
+            is_pl = True
+    else:
+        lang = os.environ.get('LANG', 'en')
         if lang.lower().startswith('pl'):
             is_pl = True
 except:
@@ -42,6 +48,8 @@ T = {
     'err': "Błąd" if is_pl else "Error"
 }
 
+APP_WINDOW = None
+
 HTML_CONTENT = """
 <!DOCTYPE html>
 <html lang="pl">
@@ -50,6 +58,17 @@ HTML_CONTENT = """
     <style>
         :root { --bg: #121212; --panel: #1e1e1e; --text: #fff; --accent: #63bdf2; }
         body, html { margin: 0; padding: 0; height: 100%; display: flex; flex-direction: column; background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; overflow: hidden; }
+        
+        /* WBUDOWANE MENU WINDOWS (Standard VS Code) */
+        #win-menu { display: flex; background: #151515; font-size: 13px; border-bottom: 1px solid #333; user-select: none; }
+        .menu-item { position: relative; padding: 8px 14px; cursor: pointer; color: #ccc; }
+        .menu-item:hover, .menu-item.active { background: #333; color: #fff; }
+        .dropdown { display: none; position: absolute; top: 100%; left: 0; background: #252525; border: 1px solid #444; min-width: 220px; box-shadow: 0 8px 20px rgba(0,0,0,0.6); z-index: 1000; padding: 5px 0; border-radius: 0 4px 4px 4px; }
+        .menu-item.active .dropdown { display: block; }
+        .drop-item { padding: 8px 15px; display: flex; justify-content: space-between; color: #ccc; align-items: center; }
+        .drop-item:hover { background: var(--accent); color: #000; font-weight: 500; }
+        .shortcut { color: #888; font-size: 11px; margin-left: 20px;}
+        .drop-item:hover .shortcut { color: #222; }
         
         #toolbar { background: var(--panel); padding: 10px 15px; display: flex; gap: 6px; align-items: center; border-bottom: 1px solid #333; }
         
@@ -60,10 +79,10 @@ HTML_CONTENT = """
         }
         button.tool-btn:hover { background: rgba(255, 255, 255, 0.1); color: #cccccc; }
         
-        #tab-bar { display: flex; background: #151515; overflow-x: auto; border-bottom: 1px solid #333; height: 38px; }
+        #tab-bar { display: flex; background: #1a1a1a; overflow-x: auto; border-bottom: 1px solid #333; height: 38px; }
         #tab-bar::-webkit-scrollbar { display: none; }
         
-        .tab { padding: 0 14px; background: #1a1a1a; color: #888; border-right: 1px solid #333; cursor: pointer; display: flex; align-items: center; font-size: 13px; min-width: 120px; max-width: 250px; white-space: nowrap; overflow: hidden; border-top: 2px solid transparent; box-sizing: border-box; height: 100%; }
+        .tab { padding: 0 14px; background: #222; color: #888; border-right: 1px solid #333; cursor: pointer; display: flex; align-items: center; font-size: 13px; min-width: 120px; max-width: 250px; white-space: nowrap; overflow: hidden; border-top: 2px solid transparent; box-sizing: border-box; height: 100%; }
         .tab.active { background: var(--bg); color: #fff; border-top: 2px solid var(--accent); }
         
         .tab-close { font-size: 16px; cursor: pointer; border-radius: 4px; width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; margin-right: 8px; margin-left: 0; transition: 0.2s; }
@@ -137,8 +156,70 @@ HTML_CONTENT = """
             quitUnsaved: isEN ? "You have unsaved changes!<br>Are you sure you want to quit without saving?" : "Masz niezapisane zmiany!<br>Czy na pewno chcesz zakończyć bez zapisywania?",
             cancelBtn: isEN ? "Cancel" : "Anuluj",
             quitBtn: isEN ? "Quit" : "Zakończ",
-            closeBtn: isEN ? "Close" : "Zamknij"
+            closeBtn: isEN ? "Close" : "Zamknij",
+            
+            mFile: isEN ? "File" : "Plik",
+            mEdit: isEN ? "Edit" : "Edycja",
+            mRun: isEN ? "Run" : "Uruchom",
+            open: isEN ? "Open" : "Otwórz",
+            save: isEN ? "Save" : "Zapisz",
+            undo: isEN ? "Undo" : "Cofnij",
+            redo: isEN ? "Redo" : "Ponów",
+            copy: isEN ? "Copy" : "Kopiuj",
+            paste: isEN ? "Paste" : "Wklej",
+            find: isEN ? "Find" : "Znajdź",
+            mStop: isEN ? "Stop" : "Zatrzymaj"
         };
+
+        if (!isMac) {
+            let winMenu = document.createElement('div');
+            winMenu.id = 'win-menu';
+            winMenu.innerHTML = `
+            <div class="menu-item">${UI.mFile}
+                <div class="dropdown">
+                    <div class="drop-item" onclick="openFile()">${UI.open} <span class="shortcut">Ctrl+O</span></div>
+                    <div class="drop-item" onclick="saveFile()">${UI.save} <span class="shortcut">Ctrl+S</span></div>
+                    <div class="drop-item" onclick="checkQuit()">${UI.quitBtn} <span class="shortcut">Alt+F4</span></div>
+                </div>
+            </div>
+            <div class="menu-item">${UI.mEdit}
+                <div class="dropdown">
+                    <div class="drop-item" onclick="if(editor)editor.trigger('keyboard', 'undo', null)">${UI.undo} <span class="shortcut">Ctrl+Z</span></div>
+                    <div class="drop-item" onclick="if(editor)editor.trigger('keyboard', 'redo', null)">${UI.redo} <span class="shortcut">Ctrl+Y</span></div>
+                    <div class="drop-item" onclick="if(editor)editor.trigger('keyboard', 'editor.action.clipboardCopyAction', null)">${UI.copy} <span class="shortcut">Ctrl+C</span></div>
+                    <div class="drop-item" onclick="if(editor)editor.trigger('keyboard', 'editor.action.clipboardPasteAction', null)">${UI.paste} <span class="shortcut">Ctrl+V</span></div>
+                    <div class="drop-item" onclick="triggerFind()">${UI.find} <span class="shortcut">Ctrl+F</span></div>
+                </div>
+            </div>
+            <div class="menu-item">${UI.mRun}
+                <div class="dropdown">
+                    <div class="drop-item" onclick="runCode()">${UI.mRun} <span class="shortcut">Ctrl+Enter</span></div>
+                    <div class="drop-item" onclick="stopCode()">${UI.mStop}</div>
+                </div>
+            </div>`;
+            document.body.insertBefore(winMenu, document.body.firstChild);
+
+            document.addEventListener('click', function(e) {
+                let isMenu = e.target.closest('.menu-item');
+                let isDropItem = e.target.closest('.drop-item');
+                if (!isMenu || isDropItem) {
+                    document.querySelectorAll('.menu-item').forEach(m => m.classList.remove('active'));
+                } else {
+                    let wasActive = isMenu.classList.contains('active');
+                    document.querySelectorAll('.menu-item').forEach(m => m.classList.remove('active'));
+                    if (!wasActive) isMenu.classList.add('active');
+                }
+            });
+
+            document.addEventListener('mouseover', function(e) {
+                let isMenu = e.target.closest('.menu-item');
+                let anyActive = document.querySelector('.menu-item.active');
+                if (isMenu && anyActive && anyActive !== isMenu) {
+                    document.querySelectorAll('.menu-item').forEach(m => m.classList.remove('active'));
+                    isMenu.classList.add('active');
+                }
+            });
+        }
 
         document.getElementById('btn-run').title = isEN ? (isMac ? "Run (⌘Enter)" : "Run (Ctrl+Enter)") : (isMac ? "Uruchom (⌘Enter)" : "Uruchom (Ctrl+Enter)");
         document.getElementById('btn-stop').title = isEN ? "Stop" : "Zatrzymaj";
@@ -156,6 +237,19 @@ HTML_CONTENT = """
         let isSwitching = false;
         var editor;
 
+        let syncTimer = null;
+        function syncUnsavedState() {
+            clearTimeout(syncTimer);
+            syncTimer = setTimeout(function() {
+                try {
+                    if (window.pywebview && window.pywebview.api) {
+                        let hasUnsaved = tabs.some(t => !t.saved);
+                        pywebview.api.set_unsaved(hasUnsaved);
+                    }
+                } catch(e) {}
+            }, 100);
+        }
+
         function renderTabs() {
             let html = '';
             tabs.forEach(t => {
@@ -170,10 +264,7 @@ HTML_CONTENT = """
             html += `<div class="tab-add" onclick="addTab('', '', 'python')" title="${UI.newFile}">+</div>`;
             document.getElementById('tab-bar').innerHTML = html;
             
-            try {
-                let hasUnsaved = tabs.some(t => !t.saved);
-                pywebview.api.set_unsaved(hasUnsaved);
-            } catch(e) {}
+            syncUnsavedState();
         }
 
         function addTab(filepath, content, lang) {
@@ -222,10 +313,8 @@ HTML_CONTENT = """
 
         function confirmModal() {
             if (pendingAction === 'quit') {
-                hideModal(); 
-                setTimeout(function() {
-                    pywebview.api.force_quit();
-                }, 100);
+                document.getElementById('exit-overlay').style.display = 'none';
+                setTimeout(function() { pywebview.api.force_quit(); }, 50);
             } else if (pendingAction === 'closeTab') {
                 forceCloseTab(pendingData);
                 hideModal();
@@ -251,12 +340,12 @@ HTML_CONTENT = """
             } else {
                 renderTabs();
             }
-            try { pywebview.api.set_unsaved(tabs.some(t => !t.saved)); } catch(e) {}
         }
 
         require.config({ paths: { 'vs': 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.40.0/min/vs' }});
         require(['vs/editor/editor.main'], function() {
             let initialCode = isEN ? '# Welcome to EditCode!\\n' : '# Witaj w EditCode!\\n';
+            
             monaco.languages.registerCompletionItemProvider('python', {
                 provideCompletionItems: function(model, position) {
                     var word = model.getWordUntilPosition(position);
@@ -383,13 +472,9 @@ HTML_CONTENT = """
 
 class BackendApi:
     def __init__(self):
-        self.window = None
         self.process = None
         self.allow_quit = False 
         self.has_unsaved = False 
-
-    def set_window(self, window):
-        self.window = window
         
     def set_unsaved(self, state):
         self.has_unsaved = state
@@ -401,10 +486,9 @@ class BackendApi:
         def kill_app():
             import time
             time.sleep(0.3)
-            
-            if self.window:
+            if APP_WINDOW:
                 try:
-                    self.window.destroy()
+                    APP_WINDOW.destroy()
                 except Exception:
                     pass
             if platform.system() == 'Windows':
@@ -414,9 +498,9 @@ class BackendApi:
         threading.Thread(target=kill_app, daemon=True).start()
 
     def print_terminal(self, text):
-        if self.window:
+        if APP_WINDOW:
             try:
-                self.window.evaluate_js(f"appendTerminal({json.dumps(text)})")
+                APP_WINDOW.evaluate_js(f"appendTerminal({json.dumps(text)})")
             except:
                 pass
 
@@ -428,7 +512,8 @@ class BackendApi:
         return 'plaintext'
 
     def open_file_dialog(self):
-        result = self.window.create_file_dialog(webview.FileDialog.OPEN)
+        if not APP_WINDOW: return None
+        result = APP_WINDOW.create_file_dialog(webview.FileDialog.OPEN)
         if result and len(result) > 0:
             filepath = result[0]
             try:
@@ -440,9 +525,10 @@ class BackendApi:
         return None
 
     def save_file_dialog(self, content, current_filepath):
+        if not APP_WINDOW: return None
         filepath_to_save = current_filepath
         if not filepath_to_save:
-            result = self.window.create_file_dialog(webview.FileDialog.SAVE)
+            result = APP_WINDOW.create_file_dialog(webview.FileDialog.SAVE)
             if result and len(result) > 0:
                 filepath_to_save = result[0]
             else:
@@ -534,6 +620,7 @@ def fix_macos_menu():
     for delay in [0.2, 1.0, 2.5, 4.0]:
         threading.Timer(delay, lambda: AppHelper.callAfter(apply_fix)).start()
 
+
 def on_closing():
     if api.allow_quit:
         return True
@@ -560,9 +647,9 @@ def on_closing():
         import time
         def trigger_js():
             time.sleep(0.1)
-            if api.window:
+            if APP_WINDOW:
                 try:
-                    api.window.evaluate_js('checkQuit()')
+                    APP_WINDOW.evaluate_js('checkQuit()')
                 except:
                     pass
         threading.Thread(target=trigger_js, daemon=True).start()
@@ -571,7 +658,7 @@ def on_closing():
 if __name__ == '__main__':
     api = BackendApi()
     
-    window = webview.create_window(
+    APP_WINDOW = webview.create_window(
         title='EditCode', 
         html=HTML_CONTENT, 
         js_api=api, 
@@ -580,10 +667,9 @@ if __name__ == '__main__':
         background_color='#1e1e1e',
         confirm_close=False 
     )
-    api.set_window(window)
     
-    window.events.closing += on_closing
-    window.events.loaded += fix_macos_menu
+    APP_WINDOW.events.closing += on_closing
+    APP_WINDOW.events.loaded += fix_macos_menu
     
     loc = {
         'mac.menu.about': 'O programie EditCode',
@@ -594,25 +680,26 @@ if __name__ == '__main__':
         'mac.menu.quit': 'Zakończ EditCode'
     }
 
-    CMD = '⌘' if platform.system() == 'Darwin' else 'Ctrl'
-    
-    menu_items = [
-        Menu('Plik' if is_pl else 'File', [
-            MenuAction(f"Otwórz  ({CMD}O)", lambda: window.evaluate_js('setTimeout(openFile, 10)')),
-            MenuAction(f"Zapisz  ({CMD}S)", lambda: window.evaluate_js('setTimeout(saveFile, 10)'))
-        ]),
-        Menu('Edycja' if is_pl else 'Edit', [
-            MenuAction(f"Cofnij  ({CMD}Z)", lambda: window.evaluate_js('setTimeout(function(){if(editor) editor.trigger("keyboard", "undo", null);}, 10)')),
-            MenuAction(f"Ponów  ({CMD}Y)", lambda: window.evaluate_js('setTimeout(function(){if(editor) editor.trigger("keyboard", "redo", null);}, 10)')),
-            MenuAction(f"Kopiuj  ({CMD}C)", lambda: window.evaluate_js('setTimeout(function(){if(editor) editor.trigger("keyboard", "editor.action.clipboardCopyAction", null);}, 10)')),
-            MenuAction(f"Wytnij  ({CMD}X)", lambda: window.evaluate_js('setTimeout(function(){if(editor) editor.trigger("keyboard", "editor.action.clipboardCutAction", null);}, 10)')),
-            MenuAction(f"Wklej  ({CMD}V)", lambda: window.evaluate_js('setTimeout(function(){if(editor) editor.trigger("keyboard", "editor.action.clipboardPasteAction", null);}, 10)')),
-            MenuAction(f"Znajdź  ({CMD}F)", lambda: window.evaluate_js('setTimeout(triggerFind, 10)'))
-        ]),
-        Menu('Uruchom' if is_pl else 'Run', [
-            MenuAction(f"Uruchom  ({CMD}Enter)", lambda: window.evaluate_js('setTimeout(runCode, 10)')),
-            MenuAction("Zatrzymaj" if is_pl else "Stop", lambda: window.evaluate_js('setTimeout(stopCode, 10)'))
-        ])
-    ]
-
-    webview.start(menu=menu_items, localization=loc, debug=False)
+    if platform.system() == 'Darwin':
+        CMD = '⌘'
+        menu_items = [
+            Menu('Plik' if is_pl else 'File', [
+                MenuAction(f"Otwórz  ({CMD}O)", lambda: APP_WINDOW.evaluate_js('setTimeout(openFile, 10)')),
+                MenuAction(f"Zapisz  ({CMD}S)", lambda: APP_WINDOW.evaluate_js('setTimeout(saveFile, 10)'))
+            ]),
+            Menu('Edycja' if is_pl else 'Edit', [
+                MenuAction(f"Cofnij  ({CMD}Z)", lambda: APP_WINDOW.evaluate_js('setTimeout(function(){if(editor) editor.trigger("keyboard", "undo", null);}, 10)')),
+                MenuAction(f"Ponów  ({CMD}Y)", lambda: APP_WINDOW.evaluate_js('setTimeout(function(){if(editor) editor.trigger("keyboard", "redo", null);}, 10)')),
+                MenuAction(f"Kopiuj  ({CMD}C)", lambda: APP_WINDOW.evaluate_js('setTimeout(function(){if(editor) editor.trigger("keyboard", "editor.action.clipboardCopyAction", null);}, 10)')),
+                MenuAction(f"Wytnij  ({CMD}X)", lambda: APP_WINDOW.evaluate_js('setTimeout(function(){if(editor) editor.trigger("keyboard", "editor.action.clipboardCutAction", null);}, 10)')),
+                MenuAction(f"Wklej  ({CMD}V)", lambda: APP_WINDOW.evaluate_js('setTimeout(function(){if(editor) editor.trigger("keyboard", "editor.action.clipboardPasteAction", null);}, 10)')),
+                MenuAction(f"Znajdź  ({CMD}F)", lambda: APP_WINDOW.evaluate_js('setTimeout(triggerFind, 10)'))
+            ]),
+            Menu('Uruchom' if is_pl else 'Run', [
+                MenuAction(f"Uruchom  ({CMD}Enter)", lambda: APP_WINDOW.evaluate_js('setTimeout(runCode, 10)')),
+                MenuAction("Zatrzymaj" if is_pl else "Stop", lambda: APP_WINDOW.evaluate_js('setTimeout(stopCode, 10)'))
+            ])
+        ]
+        webview.start(menu=menu_items, localization=loc, debug=False)
+    else:
+        webview.start(localization=loc, debug=False)
