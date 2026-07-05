@@ -59,7 +59,6 @@ HTML_CONTENT = """
         :root { --bg: #121212; --panel: #1e1e1e; --text: #fff; --accent: #63bdf2; }
         body, html { margin: 0; padding: 0; height: 100%; display: flex; flex-direction: column; background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; overflow: hidden; }
         
-        /* WBUDOWANE MENU WINDOWS (Standard VS Code) */
         #win-menu { display: flex; background: #151515; font-size: 13px; border-bottom: 1px solid #333; user-select: none; }
         .menu-item { position: relative; padding: 8px 14px; cursor: pointer; color: #ccc; }
         .menu-item:hover, .menu-item.active { background: #333; color: #fff; }
@@ -344,7 +343,6 @@ HTML_CONTENT = """
 
         require.config({ paths: { 'vs': 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.40.0/min/vs' }});
         require(['vs/editor/editor.main'], function() {
-            let initialCode = isEN ? '# Welcome to EditCode!\\n' : '# Witaj w EditCode!\\n';
             
             monaco.languages.registerCompletionItemProvider('python', {
                 provideCompletionItems: function(model, position) {
@@ -391,7 +389,6 @@ HTML_CONTENT = """
                             if (e.innerText === 'No results') e.innerText = 'Brak wyników';
                             else if (e.innerText.indexOf(' of ') !== -1) e.innerText = e.innerText.replace(' of ', ' z ');
                         });
-
                         const tooltips = [
                             ['Toggle Replace mode', 'Przełącz tryb zamiany'], ['Toggle Replace', 'Przełącz tryb zamiany'],
                             ['Replace All', 'Zamień wszystko'], ['Replace', 'Zamień'],
@@ -401,7 +398,6 @@ HTML_CONTENT = """
                             ['Match Whole Word', 'Dopasuj całe słowo'], ['Use Regular Expression', 'Użyj wyrażeń regularnych'],
                             ['Preserve Case', 'Zachowaj wielkość liter']
                         ];
-                        
                         findWidget.querySelectorAll('[title]').forEach(function(e) {
                             tooltips.forEach(function(t) {
                                 if (e.title.includes(t[0])) { e.title = e.title.replace(t[0], t[1]); }
@@ -411,7 +407,29 @@ HTML_CONTENT = """
                 }, 1000); 
             }
 
-            addTab('', initialCode, 'python');
+            function loadStartupFile() {
+                if (window.pywebview && window.pywebview.api) {
+                    pywebview.api.get_startup_file().then(function(res) {
+                        if (res && res.filepath) {
+                            // Otwiera plik przekazany przez system
+                            addTab(res.filepath, res.content, res.lang);
+                            appendTerminal(UI.openMsg + res.filepath + "\\n");
+                        } else {
+                            // Jeżeli nic nie przekazano - czysta nowa karta
+                            let initialCode = isEN ? '# Welcome to EditCode!\\n' : '# Witaj w EditCode!\\n';
+                            addTab('', initialCode, 'python');
+                        }
+                    }).catch(function() {
+                        let initialCode = isEN ? '# Welcome to EditCode!\\n' : '# Witaj w EditCode!\\n';
+                        addTab('', initialCode, 'python');
+                    });
+                } else {
+                    // Czekamy na załadowanie wtyczki pywebview
+                    setTimeout(loadStartupFile, 50);
+                }
+            }
+            
+            loadStartupFile();
         });
 
         function appendTerminal(text) {
@@ -475,7 +493,19 @@ class BackendApi:
         self.process = None
         self.allow_quit = False 
         self.has_unsaved = False 
-        
+
+    def get_startup_file(self):
+        if len(sys.argv) > 1:
+            filepath = sys.argv[1]
+            if os.path.exists(filepath):
+                try:
+                    with open(filepath, 'r', encoding='utf-8') as f:
+                        content = f.read()
+                    return {'filepath': filepath, 'content': content, 'lang': self.get_lang(filepath)}
+                except Exception:
+                    pass
+        return None
+
     def set_unsaved(self, state):
         self.has_unsaved = state
 
