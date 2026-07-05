@@ -715,6 +715,7 @@ class BackendApi:
             self.process.terminate()
             self.print_terminal(f"\n[EditCode] {T['stop_msg']}\n")
 
+
 def setup_macos_open_handler(api):
     if platform.system() != 'Darwin':
         return
@@ -730,11 +731,12 @@ def setup_macos_open_handler(api):
                 return
             
             delegate_class = type(delegate)
-            
+
             if not delegate.respondsToSelector_("application:openFile:"):
                 def application_openFile_(self, sender, filename):
                     try:
-                        api.open_specific_file(str(filename))
+                        filepath_str = str(filename)
+                        threading.Thread(target=api.open_specific_file, args=(filepath_str,), daemon=True).start()
                     except Exception: pass
                     return True
                 
@@ -745,7 +747,8 @@ def setup_macos_open_handler(api):
                 def application_openFiles_(self, sender, filenames):
                     try:
                         for f in filenames:
-                            api.open_specific_file(str(f))
+                            filepath_str = str(f)
+                            threading.Thread(target=api.open_specific_file, args=(filepath_str,), daemon=True).start()
                         if hasattr(sender, 'replyToOpenOrPrint_'):
                             sender.replyToOpenOrPrint_(1)
                     except Exception: pass
@@ -798,6 +801,7 @@ def failsafe_show(api_instance):
     if not api_instance._is_ready and APP_WINDOW:
         api_instance.app_ready()
 
+
 if __name__ == '__main__':
     api = BackendApi()
     
@@ -813,6 +817,7 @@ if __name__ == '__main__':
     )
     
     APP_WINDOW.events.closing += on_closing
+    
     APP_WINDOW.events.loaded += lambda: setup_macos_open_handler(api)
     APP_WINDOW.events.loaded += lambda: threading.Timer(3.0, failsafe_show, args=(api,)).start()
     
