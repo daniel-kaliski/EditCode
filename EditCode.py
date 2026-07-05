@@ -19,7 +19,6 @@ import threading
 import json
 import platform
 
-is_pl = False
 try:
     if platform.system() == 'Darwin':
         out = subprocess.check_output(['defaults', 'read', '-g', 'AppleLanguages']).decode('utf-8')
@@ -411,11 +410,9 @@ HTML_CONTENT = """
                 if (window.pywebview && window.pywebview.api) {
                     pywebview.api.get_startup_file().then(function(res) {
                         if (res && res.filepath) {
-                            // Otwiera plik przekazany przez system
                             addTab(res.filepath, res.content, res.lang);
                             appendTerminal(UI.openMsg + res.filepath + "\\n");
                         } else {
-                            // Jeżeli nic nie przekazano - czysta nowa karta
                             let initialCode = isEN ? '# Welcome to EditCode!\\n' : '# Witaj w EditCode!\\n';
                             addTab('', initialCode, 'python');
                         }
@@ -424,7 +421,6 @@ HTML_CONTENT = """
                         addTab('', initialCode, 'python');
                     });
                 } else {
-                    // Czekamy na załadowanie wtyczki pywebview
                     setTimeout(loadStartupFile, 50);
                 }
             }
@@ -496,14 +492,26 @@ class BackendApi:
 
     def get_startup_file(self):
         if len(sys.argv) > 1:
-            filepath = sys.argv[1]
+            filepath = " ".join(sys.argv[1:])
+            filepath = filepath.strip('"').strip("'")
+            filepath = os.path.abspath(filepath)
+            
             if os.path.exists(filepath):
+                content = ""
                 try:
                     with open(filepath, 'r', encoding='utf-8') as f:
                         content = f.read()
-                    return {'filepath': filepath, 'content': content, 'lang': self.get_lang(filepath)}
+                except UnicodeDecodeError:
+                    try:
+                        with open(filepath, 'r', encoding='mbcs', errors='replace') as f:
+                            content = f.read()
+                    except Exception:
+                        pass
                 except Exception:
                     pass
+                
+                if content is not None:
+                    return {'filepath': filepath, 'content': content, 'lang': self.get_lang(filepath)}
         return None
 
     def set_unsaved(self, state):
