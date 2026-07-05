@@ -70,11 +70,16 @@ HTML_CONTENT = """
         .drop-item:hover .shortcut { color: #222; }
         
         #toolbar { background: var(--panel); padding: 10px 15px; display: flex; gap: 6px; align-items: center; border-bottom: 1px solid #333; }
-        
+ 
         button.tool-btn { 
             border: none; padding: 6px 14px; border-radius: 6px; cursor: pointer; 
             font-size: 16px; transition: 0.2s; background: transparent; 
             display: flex; align-items: center; justify-content: center; color: #ffffff; 
+            outline: none; /* Natywne wyłączenie ramki */
+        }
+        button.tool-btn:focus, button.tool-btn:active {
+            outline: none;
+            box-shadow: none;
         }
         button.tool-btn:hover { background: rgba(255, 255, 255, 0.1); color: #cccccc; }
         
@@ -508,7 +513,8 @@ class BackendApi:
                     main_menu = app.mainMenu()
                     if main_menu:
                         allowed_titles = ['Plik', 'Edycja', 'Uruchom'] if is_pl else ['File', 'Edit', 'Run']
-                        seen_titles = set()                       
+                        seen_titles = set()
+                        
                         for i in range(main_menu.numberOfItems() - 1, 0, -1):
                             item = main_menu.itemAtIndex_(i)
                             if item:
@@ -523,7 +529,7 @@ class BackendApi:
                     pass
 
             if APP_WINDOW: APP_WINDOW.show()
-
+            
             try:
                 from PyObjCTools import AppHelper
                 for delay in [0.1, 0.5, 1.2, 2.5]:
@@ -728,22 +734,33 @@ def setup_macos_open_handler(api):
                         desc = event.paramDescriptorForKeyword_(1128418861)
                         if not desc: return
                         
+                        def process_item(item):
+                            try:
+                                furl = item.coerceToDescriptorType_(1718973036)
+                                if furl:
+                                    data = furl.data()
+                                    if data:
+                                        url_str = bytes(data).decode('utf-8')
+                                        if url_str.startswith('file://'):
+                                            from urllib.parse import unquote
+                                            api.open_specific_file(unquote(url_str[7:]))
+                                            return
+                            except: pass
+
+                            s = item.stringValue()
+                            if s:
+                                if s.startswith('file://'):
+                                    from urllib.parse import unquote
+                                    api.open_specific_file(unquote(s[7:]))
+                                else:
+                                    api.open_specific_file(s)
+
                         num_items = desc.numberOfItems()
                         if num_items > 0:
                             for i in range(1, num_items + 1):
-                                url_desc = desc.descriptorAtIndex_(i)
-                                if url_desc:
-                                    url_str = url_desc.stringValue()
-                                    if url_str and url_str.startswith('file://'):
-                                        from urllib.parse import unquote
-                                        filepath = unquote(url_str[7:])
-                                        api.open_specific_file(filepath)
+                                process_item(desc.descriptorAtIndex_(i))
                         else:
-                            url_str = desc.stringValue()
-                            if url_str and url_str.startswith('file://'):
-                                from urllib.parse import unquote
-                                filepath = unquote(url_str[7:])
-                                api.open_specific_file(filepath)
+                            process_item(desc)
                     except Exception:
                         pass
 
