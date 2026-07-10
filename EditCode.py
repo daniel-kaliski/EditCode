@@ -45,7 +45,8 @@ T = {
     'run_msg': "Uruchamianie:" if is_pl else "Running:",
     'done_msg': "Zakończono (Kod" if is_pl else "Finished (Code",
     'stop_msg': "Wymuszono zatrzymanie procesu." if is_pl else "Process forcefully stopped.",
-    'err': "Błąd" if is_pl else "Error"
+    'err': "Błąd" if is_pl else "Error",
+    'err_ext': "Nie można uruchomić tego formatu pliku. Obsługiwane: .py, .js, .sh, .bat." if is_pl else "Cannot run this file format. Supported: .py, .js, .sh, .bat."
 }
 
 APP_WINDOW = None
@@ -107,11 +108,7 @@ HTML_CONTENT = """
             top: 115%;
         }
         
-        /* NAPRAWA: Zabezpieczenie lewego Tooltipa na macOS przed ucięciem */
-        #btn-run[data-tooltip]::after {
-            left: 5px;
-            transform: none;
-        }
+        #btn-run[data-tooltip]::after { left: 5px; transform: none; }
         
         #tab-bar { display: flex; background: #1a1a1a; overflow-x: auto; border-bottom: 1px solid #333; height: 38px; }
         #tab-bar::-webkit-scrollbar { display: none; }
@@ -454,7 +451,7 @@ HTML_CONTENT = """
                         }
                         
                         pywebview.api.app_ready();
-                        if (editor) editor.focus();
+                        if (editor) editor.focus(); 
                         
                     }).catch(function() {
                         let initialCode = isEN ? '# Welcome to EditCode!\\n' : '# Witaj w EditCode!\\n';
@@ -532,9 +529,7 @@ class BackendApi:
         self.allow_quit = False 
         self.has_unsaved = False 
         self._is_ready = False
-        
         self.ui_lock = threading.Lock()
-        
         self.manually_stopped = False
 
     def app_ready(self):
@@ -603,7 +598,6 @@ class BackendApi:
                 }} catch(e) {{}}
             }})();
             """
-        
             with self.ui_lock:
                 try:
                     APP_WINDOW.evaluate_js(js)
@@ -709,33 +703,45 @@ class BackendApi:
 
     def run_code(self, filepath):
         if not filepath: return
- 
+        
+        abs_filepath = os.path.abspath(filepath)
+        filename = os.path.basename(abs_filepath)
+        ext = os.path.splitext(filename)[1].lower()
+        
+        supported_exts = ['.py', '.pyw', '.js', '.sh', '.bat', '.cmd']
+        if ext not in supported_exts:
+            self.print_terminal(f"\n[EditCode] {T['err_ext']}\n")
+            return
+
         if self.process and self.process.poll() is None:
             self.stop_code()
             
         self.manually_stopped = False
-        abs_filepath = os.path.abspath(filepath)
-        filename = os.path.basename(abs_filepath)
         self.print_terminal(f"\n[EditCode] {T['run_msg']} {filename}\n")
         
         def execute():
             try:
                 env = os.environ.copy()
-                if getattr(sys, 'frozen', False):
-                    env.pop('PYTHONHOME', None)
-                    env.pop('PYTHONPATH', None)
-                    env.pop('DYLD_LIBRARY_PATH', None)
-                    env.pop('LD_LIBRARY_PATH', None)
-                    if platform.system() == 'Darwin':
-                        env['PATH'] = '/usr/local/bin:/opt/homebrew/bin:' + env.get('PATH', '/usr/bin:/bin')
-                        cmd = ['python3', abs_filepath]
-                    else:
-                        cmd = ['python', abs_filepath]
-                else:
-                    cmd = [sys.executable, abs_filepath]
-
-                if abs_filepath.endswith('.js'):
+                
+                if ext == '.js':
                     cmd = ['node', abs_filepath]
+                elif ext == '.sh':
+                    cmd = ['bash', abs_filepath]
+                elif ext in ['.bat', '.cmd']:
+                    cmd = [abs_filepath]
+                else:
+                    if getattr(sys, 'frozen', False):
+                        env.pop('PYTHONHOME', None)
+                        env.pop('PYTHONPATH', None)
+                        env.pop('DYLD_LIBRARY_PATH', None)
+                        env.pop('LD_LIBRARY_PATH', None)
+                        if platform.system() == 'Darwin':
+                            env['PATH'] = '/usr/local/bin:/opt/homebrew/bin:' + env.get('PATH', '/usr/bin:/bin')
+                            cmd = ['python3', abs_filepath]
+                        else:
+                            cmd = ['python', abs_filepath]
+                    else:
+                        cmd = [sys.executable, abs_filepath]
 
                 self.process = subprocess.Popen(
                     cmd, 
@@ -752,7 +758,6 @@ class BackendApi:
                     
                 self.process.wait()
                 
-                # Zamiast dublować funkcje, to jeden jedyny wątek raportuje poprawnie zakończenie/zatrzymanie
                 if self.manually_stopped:
                     self.print_terminal(f"\n[EditCode] {T['stop_msg']}\n")
                 else:
@@ -770,7 +775,6 @@ class BackendApi:
                 self.process.terminate()
             except Exception:
                 pass
-
 
 def setup_macos_open_handler(api):
     if platform.system() != 'Darwin':
@@ -856,7 +860,6 @@ def on_closing():
 def failsafe_show(api_instance):
     if not api_instance._is_ready and APP_WINDOW:
         api_instance.app_ready()
-
 
 if __name__ == '__main__':
     api = BackendApi()
