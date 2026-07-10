@@ -822,7 +822,6 @@ def setup_macos_open_handler(api):
     from PyObjCTools import AppHelper
     AppHelper.callAfter(apply_handler)
 
-
 def on_closing():
     if api.allow_quit:
         return True
@@ -832,30 +831,16 @@ def on_closing():
         api.allow_quit = True
         return True
         
-    if platform.system() == 'Windows':
-        import ctypes
-        res = ctypes.windll.user32.MessageBoxW(
-            0, 
-            "Masz niezapisane zmiany w edytorze.\nCzy na pewno chcesz zakończyć bez zapisywania?", 
-            "EditCode - Ostrzeżenie", 
-            262196
-        )
-        if res == 6: 
-            api.stop_code()
-            api.allow_quit = True
-            return True
-        return False
-    else:
-        import time
-        def trigger_js():
-            time.sleep(0.1)
-            if APP_WINDOW:
-                try:
-                    APP_WINDOW.evaluate_js('checkQuit()')
-                except:
-                    pass
-        threading.Thread(target=trigger_js, daemon=True).start()
-        return False
+    import time
+    def trigger_js():
+        time.sleep(0.1)
+        if APP_WINDOW:
+            try:
+                APP_WINDOW.evaluate_js('checkQuit()')
+            except:
+                pass
+    threading.Thread(target=trigger_js, daemon=True).start()
+    return False
 
 def failsafe_show(api_instance):
     if not api_instance._is_ready and APP_WINDOW:
