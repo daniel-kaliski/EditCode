@@ -59,7 +59,7 @@ if system == 'Darwin':
         icon=icon_path,
         bundle_identifier='com.danielkaliski.editcode',
         info_plist={
-            'CFBundleShortVersionString': '1.0.0',
+            'CFBundleShortVersionString': '1.0.1',
             'CFBundleName': 'EditCode',
             'LSMinimumSystemVersion': '10.13',
             'NSHighResolutionCapable': True,
