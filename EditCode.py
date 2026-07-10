@@ -60,7 +60,7 @@ HTML_CONTENT = """
         :root { --bg: #121212; --panel: #1e1e1e; --text: #fff; --accent: #63bdf2; }
         body, html { margin: 0; padding: 0; height: 100%; display: flex; flex-direction: column; background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; overflow: hidden; }
         
-        #win-menu { display: flex; background: #151515; font-size: 13px; border-bottom: 1px solid #333; user-select: none; }
+        #win-menu { display: flex; background: #151515; font-size: 13px; border-bottom: 1px solid #333; user-select: none; flex-shrink: 0; }
         .menu-item { position: relative; padding: 8px 14px; cursor: pointer; color: #ccc; }
         .menu-item:hover, .menu-item.active { background: #333; color: #fff; }
         .dropdown { display: none; position: absolute; top: 100%; left: 0; background: #252525; border: 1px solid #444; min-width: 220px; box-shadow: 0 8px 20px rgba(0,0,0,0.6); z-index: 1000; padding: 5px 0; border-radius: 0 4px 4px 4px; }
@@ -70,7 +70,7 @@ HTML_CONTENT = """
         .shortcut { color: #888; font-size: 11px; margin-left: 20px;}
         .drop-item:hover .shortcut { color: #222; }
         
-        #toolbar { background: var(--panel); padding: 10px 15px; display: flex; gap: 6px; align-items: center; border-bottom: 1px solid #333; }
+        #toolbar { background: var(--panel); padding: 10px 15px; display: flex; gap: 6px; align-items: center; border-bottom: 1px solid #333; flex-shrink: 0; }
         
         button.tool-btn { 
             border: none; padding: 6px 14px; border-radius: 6px; cursor: pointer; 
@@ -102,29 +102,33 @@ HTML_CONTENT = """
             pointer-events: none;
             box-shadow: 0 4px 10px rgba(0,0,0,0.5);
         }
-        [data-tooltip]:hover::after {
-            opacity: 1;
-            visibility: visible;
-            top: 115%;
-        }
-        
+        [data-tooltip]:hover::after { opacity: 1; visibility: visible; top: 115%; }
         #btn-run[data-tooltip]::after { left: 5px; transform: none; }
         
-        #tab-bar { display: flex; background: #1a1a1a; overflow-x: auto; border-bottom: 1px solid #333; height: 38px; }
+        #tab-bar { display: flex; background: #1a1a1a; overflow-x: auto; border-bottom: 1px solid #333; height: 38px; flex-shrink: 0; }
         #tab-bar::-webkit-scrollbar { display: none; }
         
-        .tab { padding: 0 14px; background: #222; color: #888; border-right: 1px solid #333; cursor: pointer; display: flex; align-items: center; font-size: 13px; min-width: 120px; max-width: 250px; white-space: nowrap; overflow: hidden; border-top: 2px solid transparent; box-sizing: border-box; height: 100%; }
+        .tab { padding: 0 14px; background: #222; color: #888; border-right: 1px solid #333; cursor: pointer; display: flex; align-items: center; font-size: 13px; min-width: 120px; max-width: 250px; border-top: 2px solid transparent; box-sizing: border-box; height: 100%; flex-shrink: 0; }
         .tab.active { background: var(--bg); color: #fff; border-top: 2px solid var(--accent); }
         
-        .tab-close { font-size: 16px; cursor: pointer; border-radius: 4px; width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; margin-right: 8px; margin-left: 0; transition: 0.2s; }
+        .tab-title { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        
+        .tab-close { font-size: 16px; cursor: pointer; border-radius: 4px; width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; margin-right: 8px; margin-left: 0; transition: 0.2s; flex-shrink: 0; }
         .tab-close:hover { background: #444; color: #f44336; }
         
-        .tab-add { padding: 0 16px; cursor: pointer; color: #888; font-size: 18px; display: flex; align-items: center; height: 100%; font-weight: bold; }
+        .tab-add { padding: 0 16px; cursor: pointer; color: #888; font-size: 18px; display: flex; align-items: center; height: 100%; font-weight: bold; flex-shrink: 0; }
         .tab-add:hover { color: #fff; }
         
-        #editor-container { flex: 1; position: relative; background: var(--bg); }
+        #editor-container { flex: 1; position: relative; background: var(--bg); min-height: 0; }
         
-        #terminal { height: 200px; background: #0a0a0a; color: #00ff00; padding: 15px; overflow-y: auto; font-family: 'Menlo', 'Consolas', monospace; font-size: 12px; border-top: 1px solid #333; white-space: pre-wrap; word-wrap: break-word; }
+        #terminal-wrapper { height: 200px; display: flex; flex-direction: column; border-top: 1px solid #333; background: #0a0a0a; z-index: 10; flex-shrink: 0; }
+        .term-toolbar { display: flex; justify-content: space-between; align-items: center; padding: 5px 15px; background: #151515; border-bottom: 1px solid #222; color: #888; font-size: 11px; text-transform: uppercase; letter-spacing: 1px; user-select: none; }
+        .term-actions { display: flex; gap: 15px; }
+        .term-btn { background: transparent; border: none; color: #888; cursor: pointer; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; display: flex; align-items: center; gap: 6px; transition: 0.2s; outline: none; padding: 0; }
+        .term-btn:focus, .term-btn:active { outline: none; box-shadow: none; }
+        .term-btn:hover { color: #fff; }
+        
+        #terminal { flex: 1; color: #00ff00; padding: 10px 15px; overflow-y: auto; font-family: 'Menlo', 'Consolas', monospace; font-size: 12px; white-space: pre-wrap; word-wrap: break-word; user-select: text; -webkit-user-select: text; cursor: text; }
         
         #exit-overlay { 
             display: none; position: absolute; top: 0; left: 0; width: 100%; height: 100%; 
@@ -155,8 +159,24 @@ HTML_CONTENT = """
     </div>
     
     <div id="tab-bar"></div>
-    <div id="editor-container" id="editor"></div>
-    <div id="terminal"></div>
+    <div id="editor-container"></div>
+    
+    <div id="terminal-wrapper">
+        <div class="term-toolbar">
+            <span id="term-title">Terminal</span>
+            <div class="term-actions">
+                <button class="term-btn" onclick="copyTerminal()" id="btn-term-copy" tabindex="-1">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                    <span id="txt-term-copy">Kopiuj</span>
+                </button>
+                <button class="term-btn" onclick="clearTerminal()" id="btn-term-clear" tabindex="-1">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+                    <span id="txt-term-clear">Wyczyść</span>
+                </button>
+            </div>
+        </div>
+        <div id="terminal"></div>
+    </div>
 
     <div id="exit-overlay">
         <div class="exit-modal">
@@ -199,7 +219,11 @@ HTML_CONTENT = """
             copy: isEN ? "Copy" : "Kopiuj",
             paste: isEN ? "Paste" : "Wklej",
             find: isEN ? "Find" : "Znajdź",
-            mStop: isEN ? "Stop" : "Zatrzymaj"
+            mStop: isEN ? "Stop" : "Zatrzymaj",
+            
+            termCopy: isEN ? "Copy" : "Kopiuj",
+            termClear: isEN ? "Clear" : "Wyczyść",
+            termCopied: isEN ? "Copied!" : "Skopiowano!"
         };
 
         if (!isMac) {
@@ -257,6 +281,9 @@ HTML_CONTENT = """
 
         document.getElementById('btn-run').innerText = UI.runBtn;
         document.getElementById('btn-stop').innerText = UI.stopBtn;
+        
+        document.getElementById('txt-term-copy').innerText = UI.termCopy;
+        document.getElementById('txt-term-clear').innerText = UI.termClear;
         document.getElementById('terminal').innerText = UI.termReady;
         
         document.getElementById('btn-cancel').innerText = UI.cancelBtn;
@@ -289,7 +316,7 @@ HTML_CONTENT = """
                 
                 html += `<div class="tab ${t.id === activeTabId ? 'active' : ''}" onclick="switchTab(${t.id})" title="${fullPath}">
                             <span class="tab-close" onclick="event.stopPropagation(); closeTab(${t.id})" title="${UI.closeTab}">×</span>
-                            <span>${title}</span>
+                            <span class="tab-title">${title}</span>
                          </div>`;
             });
             html += `<div class="tab-add" onclick="addTab('', '', 'python')" title="${UI.newFile}">+</div>`;
@@ -466,6 +493,32 @@ HTML_CONTENT = """
             
             loadStartupFile();
         });
+
+        function copyTerminal() {
+            var termText = document.getElementById('terminal').innerText;
+            
+            var ta = document.createElement('textarea');
+            ta.value = termText;
+            ta.style.position = 'fixed';
+            ta.style.top = '-9999px';
+            document.body.appendChild(ta);
+            ta.select();
+            
+            try {
+                document.execCommand('copy');
+                var btnTxt = document.getElementById('txt-term-copy');
+                btnTxt.innerText = UI.termCopied;
+                setTimeout(function() { btnTxt.innerText = UI.termCopy; }, 1500);
+            } catch (err) {
+                console.error('Błąd kopiowania', err);
+            }
+            
+            document.body.removeChild(ta);
+        }
+
+        function clearTerminal() {
+            document.getElementById('terminal').innerText = UI.termReady;
+        }
 
         function appendTerminal(text) {
             var term = document.getElementById('terminal');
@@ -821,6 +874,7 @@ def setup_macos_open_handler(api):
 
     from PyObjCTools import AppHelper
     AppHelper.callAfter(apply_handler)
+
 
 def on_closing():
     if api.allow_quit:
