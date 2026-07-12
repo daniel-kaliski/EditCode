@@ -46,10 +46,36 @@ T = {
     'done_msg': "Zakończono (Kod" if is_pl else "Finished (Code",
     'stop_msg': "Wymuszono zatrzymanie procesu." if is_pl else "Process forcefully stopped.",
     'err': "Błąd" if is_pl else "Error",
-    'err_ext': "Nie można uruchomić tego formatu pliku. Obsługiwane: .py, .js, .sh, .bat." if is_pl else "Cannot run this file format. Supported: .py, .js, .sh, .bat."
+    'err_ext': "Nie można uruchomić tego formatu pliku (np. .html, .txt). Obsługiwane: .py, .js, .sh, .bat." if is_pl else "Cannot run this file format (e.g. .html, .txt). Supported: .py, .js, .sh, .bat."
 }
 
 APP_WINDOW = None
+
+def get_config_path():
+    return os.path.join(os.path.expanduser("~"), ".editcode_config.json")
+
+def save_window_state():
+    if not APP_WINDOW: return
+    try:
+        w = getattr(APP_WINDOW, 'width', 1100)
+        h = getattr(APP_WINDOW, 'height', 750)
+        x = getattr(APP_WINDOW, 'x', None)
+        y = getattr(APP_WINDOW, 'y', None)
+        
+        with open(get_config_path(), 'w', encoding='utf-8') as f:
+            json.dump({'width': w, 'height': h, 'x': x, 'y': y}, f)
+    except Exception:
+        pass
+
+def load_window_state():
+    try:
+        path = get_config_path()
+        if os.path.exists(path):
+            with open(path, 'r', encoding='utf-8') as f:
+                return json.load(f)
+    except Exception:
+        pass
+    return {}
 
 HTML_CONTENT = """
 <!DOCTYPE html>
@@ -696,6 +722,7 @@ class BackendApi:
         def kill_app():
             import time
             time.sleep(0.3)
+            save_window_state()
             if APP_WINDOW:
                 try:
                     APP_WINDOW.destroy()
@@ -878,11 +905,13 @@ def setup_macos_open_handler(api):
 
 def on_closing():
     if api.allow_quit:
+        save_window_state()
         return True
         
     if not api.has_unsaved:
         api.stop_code()
         api.allow_quit = True
+        save_window_state()
         return True
         
     import time
@@ -903,16 +932,23 @@ def failsafe_show(api_instance):
 if __name__ == '__main__':
     api = BackendApi()
     
-    APP_WINDOW = webview.create_window(
-        title='EditCode', 
-        html=HTML_CONTENT, 
-        js_api=api, 
-        width=1100, 
-        height=750,
-        background_color='#1e1e1e',
-        confirm_close=False,
-        hidden=True 
-    )
+    window_cfg = load_window_state()
+    create_kwargs = {
+        'title': 'EditCode',
+        'html': HTML_CONTENT,
+        'js_api': api,
+        'width': window_cfg.get('width', 1100),
+        'height': window_cfg.get('height', 750),
+        'background_color': '#1e1e1e',
+        'confirm_close': False,
+        'hidden': True
+    }
+    
+    if window_cfg.get('x') is not None and window_cfg.get('y') is not None:
+        create_kwargs['x'] = window_cfg.get('x')
+        create_kwargs['y'] = window_cfg.get('y')
+        
+    APP_WINDOW = webview.create_window(**create_kwargs)
     
     APP_WINDOW.events.closing += on_closing
     
