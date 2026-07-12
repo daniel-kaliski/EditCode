@@ -46,7 +46,7 @@ T = {
     'done_msg': "Zakończono (Kod" if is_pl else "Finished (Code",
     'stop_msg': "Wymuszono zatrzymanie procesu." if is_pl else "Process forcefully stopped.",
     'err': "Błąd" if is_pl else "Error",
-    'err_ext': "Nie można uruchomić tego formatu pliku (np. .html, .txt). Obsługiwane: .py, .js, .sh, .bat." if is_pl else "Cannot run this file format (e.g. .html, .txt). Supported: .py, .js, .sh, .bat."
+    'err_ext': "Nie można uruchomić tego formatu pliku. Obsługiwane: .py, .js, .sh, .bat." if is_pl else "Cannot run this file format. Supported: .py, .js, .sh, .bat."
 }
 
 APP_WINDOW = None
