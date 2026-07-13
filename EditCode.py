@@ -18,6 +18,7 @@ import subprocess
 import threading
 import json
 import platform
+import base64
 
 is_pl = False
 try:
@@ -46,26 +47,14 @@ T = {
     'done_msg': "Zakończono (Kod" if is_pl else "Finished (Code",
     'stop_msg': "Wymuszono zatrzymanie procesu." if is_pl else "Process forcefully stopped.",
     'err': "Błąd" if is_pl else "Error",
-    'err_ext': "Nie można uruchomić tego formatu pliku. Obsługiwane: .py, .js, .sh, .bat." if is_pl else "Cannot run this file format. Supported: .py, .js, .sh, .bat."
+    'err_ext': "Nie można uruchomić tego formatu pliku. Obsługiwane: .py, .js, .sh, .bat." if is_pl else "Cannot run this file format. Supported: .py, .js, .sh, .bat.",
+    'open_folder_msg': "Otwarto projekt:" if is_pl else "Opened project:"
 }
 
 APP_WINDOW = None
 
 def get_config_path():
     return os.path.join(os.path.expanduser("~"), ".editcode_config.json")
-
-def save_window_state():
-    if not APP_WINDOW: return
-    try:
-        w = getattr(APP_WINDOW, 'width', 1100)
-        h = getattr(APP_WINDOW, 'height', 750)
-        x = getattr(APP_WINDOW, 'x', None)
-        y = getattr(APP_WINDOW, 'y', None)
-        
-        with open(get_config_path(), 'w', encoding='utf-8') as f:
-            json.dump({'width': w, 'height': h, 'x': x, 'y': y}, f)
-    except Exception:
-        pass
 
 def load_window_state():
     try:
@@ -76,6 +65,33 @@ def load_window_state():
     except Exception:
         pass
     return {}
+
+def save_window_state():
+    if not APP_WINDOW: return
+    try:
+        cfg = load_window_state()
+        cfg['width'] = getattr(APP_WINDOW, 'width', 1100)
+        cfg['height'] = getattr(APP_WINDOW, 'height', 750)
+        cfg['x'] = getattr(APP_WINDOW, 'x', None)
+        cfg['y'] = getattr(APP_WINDOW, 'y', None)
+        
+        with open(get_config_path(), 'w', encoding='utf-8') as f:
+            json.dump(cfg, f)
+    except Exception:
+        pass
+
+def add_recent(path, item_type='file'):
+    try:
+        cfg = load_window_state()
+        recents = cfg.get('recents', [])
+        recents = [r for r in recents if r.get('path') != path]
+        recents.insert(0, {'path': path, 'type': item_type})
+        cfg['recents'] = recents[:10] 
+        
+        with open(get_config_path(), 'w', encoding='utf-8') as f:
+            json.dump(cfg, f)
+    except Exception:
+        pass
 
 HTML_CONTENT = """
 <!DOCTYPE html>
@@ -89,7 +105,7 @@ HTML_CONTENT = """
         #win-menu { display: flex; background: #151515; font-size: 13px; border-bottom: 1px solid #333; user-select: none; flex-shrink: 0; }
         .menu-item { position: relative; padding: 8px 14px; cursor: pointer; color: #ccc; }
         .menu-item:hover, .menu-item.active { background: #333; color: #fff; }
-        .dropdown { display: none; position: absolute; top: 100%; left: 0; background: #252525; border: 1px solid #444; min-width: 220px; box-shadow: 0 8px 20px rgba(0,0,0,0.6); z-index: 1000; padding: 5px 0; border-radius: 0 4px 4px 4px; }
+        .dropdown { display: none; position: absolute; top: 100%; left: 0; background: #252525; border: 1px solid #444; min-width: 230px; box-shadow: 0 8px 20px rgba(0,0,0,0.6); z-index: 1000; padding: 5px 0; border-radius: 0 4px 4px 4px; }
         .menu-item.active .dropdown { display: block; }
         .drop-item { padding: 8px 15px; display: flex; justify-content: space-between; color: #ccc; align-items: center; }
         .drop-item:hover { background: var(--accent); color: #000; font-weight: 500; }
@@ -98,50 +114,41 @@ HTML_CONTENT = """
         
         #toolbar { background: var(--panel); padding: 10px 15px; display: flex; gap: 6px; align-items: center; border-bottom: 1px solid #333; flex-shrink: 0; }
         
-        button.tool-btn { 
-            border: none; padding: 6px 14px; border-radius: 6px; cursor: pointer; 
-            font-size: 16px; transition: 0.2s; background: transparent; 
-            display: flex; align-items: center; justify-content: center; color: #ffffff; 
-            outline: none;
-        }
+        button.tool-btn { border: none; padding: 6px 14px; border-radius: 6px; cursor: pointer; font-size: 16px; transition: 0.2s; background: transparent; display: flex; align-items: center; justify-content: center; color: #ffffff; outline: none; }
         button.tool-btn:focus, button.tool-btn:active { outline: none; box-shadow: none; }
         button.tool-btn:hover { background: rgba(255, 255, 255, 0.1); color: #cccccc; }
         
         [data-tooltip] { position: relative; }
-        [data-tooltip]::after {
-            content: attr(data-tooltip);
-            position: absolute;
-            top: 130%;
-            left: 50%;
-            transform: translateX(-50%);
-            background: #252525;
-            color: #eee;
-            padding: 5px 10px;
-            border-radius: 4px;
-            font-size: 11px;
-            white-space: nowrap;
-            opacity: 0;
-            visibility: hidden;
-            transition: opacity 0.2s ease, top 0.2s ease;
-            z-index: 9999;
-            border: 1px solid #444;
-            pointer-events: none;
-            box-shadow: 0 4px 10px rgba(0,0,0,0.5);
-        }
+        [data-tooltip]::after { content: attr(data-tooltip); position: absolute; top: 130%; left: 50%; transform: translateX(-50%); background: #252525; color: #eee; padding: 5px 10px; border-radius: 4px; font-size: 11px; white-space: nowrap; opacity: 0; visibility: hidden; transition: opacity 0.2s ease, top 0.2s ease; z-index: 9999; border: 1px solid #444; pointer-events: none; box-shadow: 0 4px 10px rgba(0,0,0,0.5); }
         [data-tooltip]:hover::after { opacity: 1; visibility: visible; top: 115%; }
         #btn-run[data-tooltip]::after { left: 5px; transform: none; }
         
+        #main-body { display: flex; flex: 1; min-height: 0; overflow: hidden; }
+        
+        #sidebar { width: 240px; background: #151515; border-right: 1px solid #333; display: none; flex-direction: column; flex-shrink: 0; }
+        .sidebar-title { padding: 10px 15px; font-size: 11px; text-transform: uppercase; color: #888; border-bottom: 1px solid #222; letter-spacing: 1px; flex-shrink: 0; user-select: none; }
+        #file-tree-content { flex: 1; overflow-y: auto; padding: 5px 0; }
+        #file-tree-content::-webkit-scrollbar { width: 8px; }
+        #file-tree-content::-webkit-scrollbar-thumb { background: #444; border-radius: 4px; }
+        ul.tree-list { list-style: none; padding-left: 15px; margin: 0; font-size: 13px; }
+        #file-tree-content > ul.tree-list { padding-left: 0; }
+        .tree-label { cursor: pointer; padding: 5px 15px; display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: #ccc; user-select: none; transition: background 0.1s; }
+        .tree-label:hover { background: #2a2a2a; color: #fff; }
+        .tree-folder { color: #63bdf2; font-weight: bold; }
+        .tree-folder::before { content: '📂 '; font-weight: normal; margin-right: 4px; }
+        .tree-file::before { content: '📄 '; margin-right: 4px; }
+        .collapsed > ul.tree-list { display: none; }
+        .collapsed > .tree-folder::before { content: '📁 '; }
+        
+        #editor-section { display: flex; flex-direction: column; flex: 1; min-width: 0; }
+        
         #tab-bar { display: flex; background: #1a1a1a; overflow-x: auto; border-bottom: 1px solid #333; height: 38px; flex-shrink: 0; }
         #tab-bar::-webkit-scrollbar { display: none; }
-        
         .tab { padding: 0 14px; background: #222; color: #888; border-right: 1px solid #333; cursor: pointer; display: flex; align-items: center; font-size: 13px; min-width: 120px; max-width: 250px; border-top: 2px solid transparent; box-sizing: border-box; height: 100%; flex-shrink: 0; }
         .tab.active { background: var(--bg); color: #fff; border-top: 2px solid var(--accent); }
-        
         .tab-title { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-        
         .tab-close { font-size: 16px; cursor: pointer; border-radius: 4px; width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; margin-right: 8px; margin-left: 0; transition: 0.2s; flex-shrink: 0; }
         .tab-close:hover { background: #444; color: #f44336; }
-        
         .tab-add { padding: 0 16px; cursor: pointer; color: #888; font-size: 18px; display: flex; align-items: center; height: 100%; font-weight: bold; flex-shrink: 0; }
         .tab-add:hover { color: #fff; }
         
@@ -153,28 +160,27 @@ HTML_CONTENT = """
         .term-btn { background: transparent; border: none; color: #888; cursor: pointer; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; display: flex; align-items: center; gap: 6px; transition: 0.2s; outline: none; padding: 0; }
         .term-btn:focus, .term-btn:active { outline: none; box-shadow: none; }
         .term-btn:hover { color: #fff; }
-        
         #terminal { flex: 1; color: #00ff00; padding: 10px 15px; overflow-y: auto; font-family: 'Menlo', 'Consolas', monospace; font-size: 12px; white-space: pre-wrap; word-wrap: break-word; user-select: text; -webkit-user-select: text; cursor: text; }
         
-        #exit-overlay { 
-            display: none; position: absolute; top: 0; left: 0; width: 100%; height: 100%; 
-            background: rgba(0, 0, 0, 0.65); z-index: 9999; 
-            justify-content: center; align-items: center; backdrop-filter: blur(3px);
-        }
-        .exit-modal { 
-            background: #1e1e1e; border: 1px solid #333; border-radius: 12px; 
-            padding: 30px; width: 340px; box-shadow: 0 20px 45px rgba(0,0,0,0.6); 
-            display: flex; flex-direction: column; align-items: center; text-align: center;
-        }
+        .overlay { display: none; position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.65); z-index: 9999; justify-content: center; align-items: center; backdrop-filter: blur(3px); }
+        .modal { background: #1e1e1e; border: 1px solid #333; border-radius: 12px; padding: 30px; width: 340px; box-shadow: 0 20px 45px rgba(0,0,0,0.6); display: flex; flex-direction: column; align-items: center; text-align: center; }
         .exit-icon { font-size: 48px; margin-bottom: 15px; line-height: 1; }
         .exit-text { font-size: 15px; line-height: 1.5; color: #eee; margin-bottom: 25px; }
-        .exit-buttons { display: flex; justify-content: center; gap: 12px; width: 100%; }
-        
-        .btn-modal { border: none; padding: 8px 24px; border-radius: 6px; cursor: pointer; font-size: 14px; transition: 0.2s; font-weight: bold; }
+        .modal-buttons { display: flex; justify-content: center; gap: 12px; width: 100%; }
+        .btn-modal { border: none; padding: 8px 24px; border-radius: 6px; cursor: pointer; font-size: 14px; transition: 0.2s; font-weight: bold; outline: none; }
         .btn-cancel { background: #444; color: white; }
         .btn-cancel:hover { background: #555; }
         .btn-confirm { background: #F44336; color: white; }
         .btn-confirm:hover { background: #d32f2f; }
+        
+        .recent-item { padding: 10px 15px; border-bottom: 1px solid #333; cursor: pointer; color: #ccc; font-size: 13px; display: flex; align-items: center; gap: 12px; transition: 0.2s; }
+        .recent-item:hover { background: #2a2a2a; color: #fff; }
+        .recent-item:last-child { border-bottom: none; }
+        .recent-icon { font-size: 18px; flex-shrink: 0; }
+        .recent-name { color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 500; margin-bottom: 2px; }
+        .recent-path { font-size: 11px; color: #777; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        #recent-list::-webkit-scrollbar { width: 8px; }
+        #recent-list::-webkit-scrollbar-thumb { background: #444; border-radius: 4px; }
     </style>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.40.0/min/vs/loader.min.js"></script>
 </head>
@@ -184,33 +190,52 @@ HTML_CONTENT = """
         <button class="tool-btn" onclick="stopCode()" id="btn-stop" tabindex="-1" data-tooltip=""></button>
     </div>
     
-    <div id="tab-bar"></div>
-    <div id="editor-container"></div>
-    
-    <div id="terminal-wrapper">
-        <div class="term-toolbar">
-            <span id="term-title">Terminal</span>
-            <div class="term-actions">
-                <button class="term-btn" onclick="copyTerminal()" id="btn-term-copy" tabindex="-1">
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
-                    <span id="txt-term-copy">Kopiuj</span>
-                </button>
-                <button class="term-btn" onclick="clearTerminal()" id="btn-term-clear" tabindex="-1">
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
-                    <span id="txt-term-clear">Wyczyść</span>
-                </button>
+    <div id="main-body">
+        <div id="sidebar">
+            <div class="sidebar-title" id="txt-sidebar-title">Eksplorator</div>
+            <div id="file-tree-content"></div>
+        </div>
+        
+        <div id="editor-section">
+            <div id="tab-bar"></div>
+            <div id="editor-container"></div>
+            
+            <div id="terminal-wrapper">
+                <div class="term-toolbar">
+                    <span id="term-title">Terminal</span>
+                    <div class="term-actions">
+                        <button class="term-btn" onclick="copyTerminal()" id="btn-term-copy" tabindex="-1">
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                            <span id="txt-term-copy">Kopiuj</span>
+                        </button>
+                        <button class="term-btn" onclick="clearTerminal()" id="btn-term-clear" tabindex="-1">
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+                            <span id="txt-term-clear">Wyczyść</span>
+                        </button>
+                    </div>
+                </div>
+                <div id="terminal"></div>
             </div>
         </div>
-        <div id="terminal"></div>
     </div>
 
-    <div id="exit-overlay">
-        <div class="exit-modal">
+    <div id="exit-overlay" class="overlay">
+        <div class="modal">
             <div class="exit-icon" id="exit-icon">⚠️</div>
             <div class="exit-text" id="exit-msg">Masz niezapisane zmiany!<br>Czy na pewno chcesz zakończyć bez zapisywania?</div>
-            <div class="exit-buttons">
+            <div class="modal-buttons">
                 <button class="btn-modal btn-cancel" onclick="hideModal()" id="btn-cancel">Anuluj</button>
                 <button class="btn-modal btn-confirm" onclick="confirmModal()" id="btn-confirm">Zakończ</button>
+            </div>
+        </div>
+    </div>
+    
+    <div id="recent-overlay" class="overlay">
+        <div class="modal" style="width: 480px; align-items: flex-start; text-align: left; padding: 25px;">
+            <h3 style="margin: 0 0 15px 0; color: #fff; font-size: 16px;" id="txt-recent-title">Ostatnio otwierane</h3>
+            <div id="recent-list" style="width: 100%; max-height: 350px; overflow-y: auto; background: #151515; border: 1px solid #333; border-radius: 6px; margin-bottom: 20px;"></div>
+            <div class="modal-buttons" style="justify-content: flex-end;">
+                <button class="btn-modal btn-cancel" onclick="closeRecent()" id="btn-recent-close">Zamknij</button>
             </div>
         </div>
     </div>
@@ -238,7 +263,9 @@ HTML_CONTENT = """
             mFile: isEN ? "File" : "Plik",
             mEdit: isEN ? "Edit" : "Edycja",
             mRun: isEN ? "Run" : "Uruchom",
-            open: isEN ? "Open" : "Otwórz",
+            open: isEN ? "Open File" : "Otwórz plik",
+            openFolder: isEN ? "Open Folder" : "Otwórz folder",
+            openRecent: isEN ? "Open Recent" : "Otwórz ostatnie",
             save: isEN ? "Save" : "Zapisz",
             undo: isEN ? "Undo" : "Cofnij",
             redo: isEN ? "Redo" : "Ponów",
@@ -249,7 +276,12 @@ HTML_CONTENT = """
             
             termCopy: isEN ? "Copy" : "Kopiuj",
             termClear: isEN ? "Clear" : "Wyczyść",
-            termCopied: isEN ? "Copied!" : "Skopiowano!"
+            termCopied: isEN ? "Copied!" : "Skopiowano!",
+            
+            explorerTitle: isEN ? "Explorer" : "Eksplorator",
+            recentTitle: isEN ? "Recently Opened" : "Ostatnio otwierane",
+            recentEmpty: isEN ? "No recent files." : "Brak historii.",
+            errUnsupported: isEN ? "Unsupported file format:" : "Program nie obsługuje tego formatu:"
         };
 
         if (!isMac) {
@@ -259,6 +291,8 @@ HTML_CONTENT = """
             <div class="menu-item">${UI.mFile}
                 <div class="dropdown">
                     <div class="drop-item" onclick="openFile()">${UI.open} <span class="shortcut">Ctrl+O</span></div>
+                    <div class="drop-item" onclick="openFolder()">${UI.openFolder}</div>
+                    <div class="drop-item" onclick="showRecent()">${UI.openRecent} <span class="shortcut">Ctrl+R</span></div>
                     <div class="drop-item" onclick="saveFile()">${UI.save} <span class="shortcut">Ctrl+S</span></div>
                     <div class="drop-item" onclick="checkQuit()">${UI.quitBtn} <span class="shortcut">Alt+F4</span></div>
                 </div>
@@ -314,6 +348,9 @@ HTML_CONTENT = """
         
         document.getElementById('btn-cancel').innerText = UI.cancelBtn;
         document.getElementById('btn-confirm').innerText = UI.quitBtn;
+        document.getElementById('txt-sidebar-title').innerText = UI.explorerTitle;
+        document.getElementById('txt-recent-title').innerText = UI.recentTitle;
+        document.getElementById('btn-recent-close').innerText = UI.closeBtn;
 
         let tabs = [];
         let activeTabId = null;
@@ -353,7 +390,7 @@ HTML_CONTENT = """
 
         function addTab(filepath, content, lang) {
             let id = tabIdCounter++;
-            let filename = filepath ? filepath.split('/').pop().split('\\\\').pop() : UI.newFile;
+            let filename = filepath ? filepath.split(/[\\\\/]/).pop() : UI.newFile;
             tabs.push({ id, filepath, filename, content, lang, saved: true });
             switchTab(id);
         }
@@ -374,6 +411,142 @@ HTML_CONTENT = """
             renderTabs();
         }
 
+        function escapeHtml(text) {
+            return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
+        }
+
+        function loadProject(treeData) {
+            document.getElementById('sidebar').style.display = 'flex';
+            if(editor) { editor.layout(); }
+            document.getElementById('file-tree-content').innerHTML = `<ul class="tree-list">${renderTree(treeData, true)}</ul>`;
+        }
+
+        function renderTree(node, isRoot = false) {
+            let html = '';
+            if (node.type === 'folder') {
+                let liClass = isRoot ? '' : ' class="collapsed"';
+                html += `<li${liClass}><span class="tree-label tree-folder" onclick="toggleFolder(this)">${escapeHtml(node.name)}</span><ul class="tree-list">`;
+                for (let child of node.children) { html += renderTree(child, false); }
+                html += `</ul></li>`;
+            } else {
+                let encPath = encodeURIComponent(node.path).replace(/'/g, "%27");
+                html += `<li><span class="tree-label tree-file" onclick="openEncodedTreeFile('${encPath}')">${escapeHtml(node.name)}</span></li>`;
+            }
+            return html;
+        }
+
+        function toggleFolder(el) { el.parentElement.classList.toggle('collapsed'); }
+
+        function handleFileResponse(res) {
+            if (!res) return;
+            if (res.error === 'unsupported') {
+                appendTerminal("\\n[Błąd] " + UI.errUnsupported + " " + res.filename + "\\n");
+            } else if (res.filepath) {
+                addTab(res.filepath, res.content, res.lang);
+                appendTerminal(UI.openMsg + res.filepath + "\\n");
+            }
+        }
+
+        function openEncodedTreeFile(encPath) { 
+            let path = decodeURIComponent(encPath);
+            pywebview.api.open_specific_file(path).then(handleFileResponse);
+        }
+
+        function openFile() {
+            pywebview.api.open_file_dialog().then(handleFileResponse);
+        }
+        
+        function openFolder() {
+            pywebview.api.open_folder_dialog().then(function(tree) {
+                if(tree) {
+                    loadProject(tree);
+                    appendTerminal(UI.openMsg + tree.path + "\\n");
+                }
+            });
+        }
+
+        function saveFile() {
+            if (activeTabId === null) return;
+            let tab = tabs.find(t => t.id === activeTabId);
+            tab.content = editor.getValue();
+            pywebview.api.save_file_dialog(tab.content, tab.filepath).then(function(result) {
+                if(result) {
+                    if(result.error) {
+                        appendTerminal(UI.errSave + " " + result.error + "\\n");
+                    } else {
+                        tab.filepath = result.filepath; 
+                        tab.filename = result.filename; 
+                        tab.saved = true; 
+                        renderTabs(); 
+                        appendTerminal(UI.saveMsg + tab.filename + "\\n"); 
+                    }
+                }
+            });
+        }
+
+        function showRecent() {
+            pywebview.api.get_recents().then(function(recents) {
+                let html = '';
+                recents.forEach(r => {
+                    let icon = r.type === 'folder' ? '📁' : '📄';
+                    let filename = r.path.split(/[\\\\/]/).pop();
+                    let encPath = encodeURIComponent(r.path).replace(/'/g, "%27");
+                    let action = r.type === 'folder' ? `openRecentFolder('${encPath}')` : `openRecentFile('${encPath}')`;
+                    
+                    html += `
+                    <div class="recent-item" onclick="${action}">
+                        <span class="recent-icon">${icon}</span>
+                        <div style="overflow: hidden;">
+                            <div class="recent-name" title="${escapeHtml(filename)}">${escapeHtml(filename)}</div>
+                            <div class="recent-path" title="${escapeHtml(r.path)}">${escapeHtml(r.path)}</div>
+                        </div>
+                    </div>`;
+                });
+                
+                if(recents.length === 0) html = `<div style="padding: 20px; color:#888; text-align:center;">${UI.recentEmpty}</div>`;
+                document.getElementById('recent-list').innerHTML = html;
+                document.getElementById('recent-overlay').style.display = 'flex';
+            });
+        }
+        
+        function openRecentFile(encPath) { 
+            closeRecent(); 
+            let path = decodeURIComponent(encPath);
+            pywebview.api.open_specific_file(path).then(handleFileResponse); 
+        }
+        
+        function openRecentFolder(encPath) { 
+            closeRecent(); 
+            let path = decodeURIComponent(encPath);
+            pywebview.api.open_specific_folder(path).then(function(tree) {
+                if(tree) {
+                    loadProject(tree);
+                    appendTerminal(UI.openMsg + tree.path + "\\n");
+                }
+            }); 
+        }
+        
+        function closeRecent() { document.getElementById('recent-overlay').style.display = 'none'; }
+
+
+        function b64DecodeUnicode(str) {
+            return decodeURIComponent(atob(str).split('').map(function(c) {
+                return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
+            }).join(''));
+        }
+
+        function openFileFromBase64(b64Str) {
+            try { handleFileResponse(JSON.parse(b64DecodeUnicode(b64Str))); } catch(e) {}
+        }
+
+        function loadProjectFromBase64(b64Str) {
+            try { 
+                let tree = JSON.parse(b64DecodeUnicode(b64Str));
+                loadProject(tree);
+                appendTerminal(UI.openMsg + tree.path + "\\n");
+            } catch(e) {}
+        }
+
         let pendingAction = null;
         let pendingData = null;
 
@@ -382,11 +555,8 @@ HTML_CONTENT = """
             document.getElementById('exit-overlay').style.display = 'flex';
             pendingAction = action;
             pendingData = data;
-            if (action === 'closeTab') {
-                document.getElementById('btn-confirm').innerText = UI.closeBtn;
-            } else {
-                document.getElementById('btn-confirm').innerText = UI.quitBtn;
-            }
+            if (action === 'closeTab') { document.getElementById('btn-confirm').innerText = UI.closeBtn; } 
+            else { document.getElementById('btn-confirm').innerText = UI.quitBtn; }
         }
 
         function hideModal() { 
@@ -405,27 +575,6 @@ HTML_CONTENT = """
             }
         }
 
-        function closeTab(id) {
-            let tab = tabs.find(t => t.id === id);
-            if (!tab.saved) {
-                let msg = UI.unsavedTab.replace('{0}', tab.filename);
-                showModal(msg, 'closeTab', id);
-                return;
-            }
-            forceCloseTab(id);
-        }
-
-        function forceCloseTab(id) {
-            tabs = tabs.filter(t => t.id !== id);
-            if (tabs.length === 0) {
-                addTab('', '', 'python'); 
-            } else if (activeTabId === id) {
-                switchTab(tabs[tabs.length - 1].id);
-            } else {
-                renderTabs();
-            }
-        }
-
         require.config({ paths: { 'vs': 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.40.0/min/vs' }});
         require(['vs/editor/editor.main'], function() {
             
@@ -439,8 +588,6 @@ HTML_CONTENT = """
                             { label: 'if', kind: monaco.languages.CompletionItemKind.Snippet, insertText: 'if ${1:condition}:\\n\\t${2:pass}', insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet, documentation: 'Instrukcja if', range: range },
                             { label: 'for', kind: monaco.languages.CompletionItemKind.Snippet, insertText: 'for ${1:item} in ${2:iterable}:\\n\\t${3:pass}', insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet, documentation: 'Pętla for', range: range },
                             { label: 'class', kind: monaco.languages.CompletionItemKind.Snippet, insertText: 'class ${1:Name}:\\n\\tdef __init__(self):\\n\\t\\t${2:pass}', insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet, documentation: 'Definicja klasy', range: range },
-                            { label: 'while', kind: monaco.languages.CompletionItemKind.Snippet, insertText: 'while ${1:condition}:\\n\\t${2:pass}', insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet, documentation: 'Pętla while', range: range },
-                            { label: 'try', kind: monaco.languages.CompletionItemKind.Snippet, insertText: 'try:\\n\\t${1:pass}\\nexcept ${2:Exception} as ${3:e}:\\n\\t${4:raise}', insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet, documentation: 'Blok try/except', range: range },
                             { label: 'main', kind: monaco.languages.CompletionItemKind.Snippet, insertText: 'if __name__ == "__main__":\\n\\t${1:main()}', insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet, documentation: 'Punkt wejścia programu', range: range }
                         ]
                     };
@@ -464,40 +611,22 @@ HTML_CONTENT = """
                 }
             });
 
-            if (!isEN) {
-                setInterval(function() {
-                    let findWidget = document.querySelector('.find-widget');
-                    if (findWidget) {
-                        findWidget.querySelectorAll('textarea[placeholder="Find"], input[placeholder="Find"]').forEach(function(e) { e.placeholder = 'Znajdź'; });
-                        findWidget.querySelectorAll('textarea[placeholder="Replace"], input[placeholder="Replace"]').forEach(function(e) { e.placeholder = 'Zamień'; });
-                        findWidget.querySelectorAll('.matchesCount').forEach(function(e) {
-                            if (e.innerText === 'No results') e.innerText = 'Brak wyników';
-                            else if (e.innerText.indexOf(' of ') !== -1) e.innerText = e.innerText.replace(' of ', ' z ');
-                        });
-                        const tooltips = [
-                            ['Toggle Replace mode', 'Przełącz tryb zamiany'], ['Toggle Replace', 'Przełącz tryb zamiany'],
-                            ['Replace All', 'Zamień wszystko'], ['Replace', 'Zamień'],
-                            ['Find in Selection', 'Znajdź w zaznaczeniu'], ['Find in selection', 'Znajdź w zaznaczeniu'],
-                            ['Previous match', 'Poprzedni wynik'], ['Next match', 'Następny wynik'],
-                            ['Close (Escape)', 'Zamknij (Escape)'], ['Match Case', 'Uwzględniaj wielkość liter'],
-                            ['Match Whole Word', 'Dopasuj całe słowo'], ['Use Regular Expression', 'Użyj wyrażeń regularnych'],
-                            ['Preserve Case', 'Zachowaj wielkość liter']
-                        ];
-                        findWidget.querySelectorAll('[title]').forEach(function(e) {
-                            tooltips.forEach(function(t) {
-                                if (e.title.includes(t[0])) { e.title = e.title.replace(t[0], t[1]); }
-                            });
-                        });
-                    }
-                }, 1000); 
-            }
-
             function loadStartupFile() {
                 if (window.pywebview && window.pywebview.api) {
                     pywebview.api.get_startup_file().then(function(res) {
                         if (res && res.filepath) {
-                            addTab(res.filepath, res.content, res.lang);
-                            appendTerminal(UI.openMsg + res.filepath + "\\n");
+                            if(res.type === 'folder') {
+                                pywebview.api.open_specific_folder(res.filepath).then(function(tree) {
+                                    if(tree) {
+                                        loadProject(tree);
+                                        appendTerminal(UI.openMsg + tree.path + "\\n");
+                                    }
+                                    let initialCode = isEN ? '# Welcome to EditCode!\\n' : '# Witaj w EditCode!\\n';
+                                    addTab('', initialCode, 'python');
+                                });
+                            } else {
+                                handleFileResponse(res);
+                            }
                         } else {
                             let initialCode = isEN ? '# Welcome to EditCode!\\n' : '# Witaj w EditCode!\\n';
                             addTab('', initialCode, 'python');
@@ -522,23 +651,18 @@ HTML_CONTENT = """
 
         function copyTerminal() {
             var termText = document.getElementById('terminal').innerText;
-            
             var ta = document.createElement('textarea');
             ta.value = termText;
             ta.style.position = 'fixed';
             ta.style.top = '-9999px';
             document.body.appendChild(ta);
             ta.select();
-            
             try {
                 document.execCommand('copy');
                 var btnTxt = document.getElementById('txt-term-copy');
                 btnTxt.innerText = UI.termCopied;
                 setTimeout(function() { btnTxt.innerText = UI.termCopy; }, 1500);
-            } catch (err) {
-                console.error('Błąd kopiowania', err);
-            }
-            
+            } catch (err) {}
             document.body.removeChild(ta);
         }
 
@@ -550,21 +674,6 @@ HTML_CONTENT = """
             var term = document.getElementById('terminal');
             term.textContent += text;
             term.scrollTop = term.scrollHeight;
-        }
-
-        function openFile() {
-            pywebview.api.open_file_dialog().then(function(result) {
-                if(result) { addTab(result.filepath, result.content, result.lang); appendTerminal(UI.openMsg + result.filepath + "\\n"); }
-            });
-        }
-
-        function saveFile() {
-            if (activeTabId === null) return;
-            let tab = tabs.find(t => t.id === activeTabId);
-            tab.content = editor.getValue();
-            pywebview.api.save_file_dialog(tab.content, tab.filepath).then(function(result) {
-                if(result) { tab.filepath = result.filepath; tab.filename = result.filename; tab.saved = true; renderTabs(); appendTerminal(UI.saveMsg + tab.filename + "\\n"); }
-            });
         }
 
         function triggerFind() { if (editor) { editor.trigger('keyboard', 'actions.find', null); } }
@@ -584,6 +693,7 @@ HTML_CONTENT = """
                 let key = e.key.toLowerCase();
                 if (key === 's') { e.preventDefault(); saveFile(); }
                 if (key === 'o') { e.preventDefault(); openFile(); }
+                if (key === 'r') { e.preventDefault(); showRecent(); }
                 if (key === 'f') { e.preventDefault(); triggerFind(); }
                 if (key === 'enter') { e.preventDefault(); runCode(); }
             }
@@ -608,8 +718,6 @@ class BackendApi:
         self.allow_quit = False 
         self.has_unsaved = False 
         self._is_ready = False
-        self.ui_lock = threading.Lock()
-        self.manually_stopped = False
 
     def app_ready(self):
         if self._is_ready: return
@@ -648,69 +756,138 @@ class BackendApi:
                 pass
         else:
             if APP_WINDOW: APP_WINDOW.show()
+            
+    def get_recents(self):
+        cfg = load_window_state()
+        return cfg.get('recents', [])
+
+    def is_text_file(self, filepath):
+        try:
+            if os.path.getsize(filepath) > 5 * 1024 * 1024:
+                return False
+                
+            _, ext = os.path.splitext(filepath)
+            bin_exts = {'.png', '.jpg', '.jpeg', '.gif', '.ico', '.pdf', '.exe', '.dll', '.zip', '.rar', '.7z', '.tar', '.mp4', '.mp3', '.wav', '.so', '.dylib', '.pyc'}
+            if ext.lower() in bin_exts:
+                return False
+
+            with open(filepath, 'rb') as f:
+                if b'\x00' in f.read(1024):
+                    return False
+            return True
+        except Exception:
+            return False
+
+    def _build_tree(self, path, depth, counter=None):
+        if counter is None: counter = [0]
+        if depth > 8 or counter[0] > 1000: return None
+        
+        ignore = {'.git', 'node_modules', '__pycache__', 'venv', 'env', '.idea', '.vscode'}
+        children = []
+        try:
+            entries = sorted(os.scandir(path), key=lambda e: (not e.is_dir(), e.name.lower()))
+            for entry in entries:
+                if entry.name in ignore or entry.name.startswith('.'):
+                    continue
+                counter[0] += 1
+                if entry.is_dir(follow_symlinks=False):
+                    node = self._build_tree(entry.path, depth + 1, counter)
+                    if node: children.append(node)
+                else:
+                    children.append({'name': entry.name, 'path': entry.path, 'type': 'file'})
+        except Exception: pass
+        return {'name': os.path.basename(path) or path, 'path': path, 'type': 'folder', 'children': children}
+
+    def open_specific_folder(self, folder_path):
+        if os.path.isdir(folder_path):
+            add_recent(folder_path, 'folder')
+            return self._build_tree(folder_path, 0)
+        return None
+
+    def open_folder_dialog(self):
+        if not APP_WINDOW: return None
+        result = APP_WINDOW.create_file_dialog(webview.FileDialog.FOLDER)
+        if result and len(result) > 0:
+            return self.open_specific_folder(result[0])
+        return None
 
     def open_specific_file(self, filepath):
-        if not APP_WINDOW: return
-        if os.path.exists(filepath):
-            content = ""
+        if not os.path.exists(filepath): return None
+        
+        if not self.is_text_file(filepath):
+            return {'error': 'unsupported', 'filename': os.path.basename(filepath)}
+            
+        add_recent(filepath, 'file')
+        content = ""
+        try:
+            with open(filepath, 'r', encoding='utf-8') as f:
+                content = f.read()
+        except UnicodeDecodeError:
             try:
-                with open(filepath, 'r', encoding='utf-8') as f:
+                with open(filepath, 'r', encoding='mbcs', errors='replace') as f:
                     content = f.read()
-            except UnicodeDecodeError:
-                try:
-                    with open(filepath, 'r', encoding='mbcs', errors='replace') as f:
-                        content = f.read()
-                except Exception: pass
             except Exception: pass
-            
-            lang = self.get_lang(filepath)
-            
-            fp_json = json.dumps(filepath)
-            ct_json = json.dumps(content)
-            lg_json = json.dumps(lang)
-            
-            js = f"""
-            (function() {{
-                try {{
-                    addTab({fp_json}, {ct_json}, {lg_json});
-                    appendTerminal(UI.openMsg + {fp_json} + "\\n");
-                }} catch(e) {{}}
-            }})();
-            """
-            with self.ui_lock:
-                try:
-                    APP_WINDOW.evaluate_js(js)
-                except:
-                    pass
+        except Exception: pass
+        
+        return {'filepath': filepath, 'content': content, 'lang': self.get_lang(filepath), 'type': 'file'}
+
+    def open_file_dialog(self):
+        if not APP_WINDOW: return None
+        result = APP_WINDOW.create_file_dialog(webview.FileDialog.OPEN)
+        if result and len(result) > 0:
+            return self.open_specific_file(result[0])
+        return None
+
+    def save_file_dialog(self, content, current_filepath):
+        if not APP_WINDOW: return None
+        filepath_to_save = current_filepath
+        if not filepath_to_save:
+            result = APP_WINDOW.create_file_dialog(webview.FileDialog.SAVE)
+            if result and len(result) > 0:
+                filepath_to_save = result[0]
+            else:
+                return None
+
+        try:
+            with open(filepath_to_save, 'w', encoding='utf-8') as f:
+                f.write(content)
+            add_recent(filepath_to_save, 'file')
+            filename = os.path.basename(filepath_to_save)
+            return {'filepath': filepath_to_save, 'filename': filename}
+        except Exception as e:
+            return {'error': str(e)}
 
     def get_startup_file(self):
         if len(sys.argv) > 1:
             filepath = None
             joined_path = " ".join(sys.argv[1:]).strip('"').strip("'")
-            if os.path.exists(joined_path) and os.path.isfile(joined_path):
+            if os.path.exists(joined_path):
                 filepath = joined_path
             else:
                 for arg in sys.argv[1:]:
                     clean_arg = arg.strip('"').strip("'")
-                    if os.path.exists(clean_arg) and os.path.isfile(clean_arg):
+                    if os.path.exists(clean_arg):
                         filepath = clean_arg
                         break
 
             if filepath:
                 filepath = os.path.abspath(filepath)
-                content = ""
-                try:
-                    with open(filepath, 'r', encoding='utf-8') as f:
-                        content = f.read()
-                except UnicodeDecodeError:
-                    try:
-                        with open(filepath, 'r', encoding='mbcs', errors='replace') as f:
-                            content = f.read()
-                    except Exception: pass
-                except Exception: pass
-                
-                return {'filepath': filepath, 'content': content, 'lang': self.get_lang(filepath)}
+                if os.path.isdir(filepath):
+                    return {'filepath': filepath, 'type': 'folder'}
+                return self.open_specific_file(filepath)
         return None
+
+    def macos_push_file(self, filepath):
+        res = self.open_specific_file(filepath)
+        if res and APP_WINDOW:
+            res_b64 = base64.b64encode(json.dumps(res).encode('utf-8')).decode('utf-8')
+            APP_WINDOW.evaluate_js(f"openFileFromBase64('{res_b64}')")
+
+    def macos_push_folder(self, folder_path):
+        tree = self.open_specific_folder(folder_path)
+        if tree and APP_WINDOW:
+            tree_b64 = base64.b64encode(json.dumps(tree).encode('utf-8')).decode('utf-8')
+            APP_WINDOW.evaluate_js(f"loadProjectFromBase64('{tree_b64}')")
 
     def set_unsaved(self, state):
         self.has_unsaved = state
@@ -736,11 +913,11 @@ class BackendApi:
 
     def print_terminal(self, text):
         if APP_WINDOW:
-            with self.ui_lock:
-                try:
-                    APP_WINDOW.evaluate_js(f"appendTerminal({json.dumps(text)})")
-                except:
-                    pass
+            try:
+                text_enc = urllib.parse.quote(text)
+                APP_WINDOW.evaluate_js(f"appendTerminal(decodeURIComponent('{text_enc}'))")
+            except:
+                pass
 
     def get_lang(self, filepath):
         if filepath.endswith('.py'): return 'python'
@@ -748,38 +925,6 @@ class BackendApi:
         if filepath.endswith('.html'): return 'html'
         if filepath.endswith('.css'): return 'css'
         return 'plaintext'
-
-    def open_file_dialog(self):
-        if not APP_WINDOW: return None
-        result = APP_WINDOW.create_file_dialog(webview.FileDialog.OPEN)
-        if result and len(result) > 0:
-            filepath = result[0]
-            try:
-                with open(filepath, 'r', encoding='utf-8') as f:
-                    content = f.read()
-                return {'filepath': filepath, 'content': content, 'lang': self.get_lang(filepath)}
-            except Exception as e:
-                self.print_terminal(f"\n[{T['err']}] {T['err_open']} {e}\n")
-        return None
-
-    def save_file_dialog(self, content, current_filepath):
-        if not APP_WINDOW: return None
-        filepath_to_save = current_filepath
-        if not filepath_to_save:
-            result = APP_WINDOW.create_file_dialog(webview.FileDialog.SAVE)
-            if result and len(result) > 0:
-                filepath_to_save = result[0]
-            else:
-                return None
-
-        try:
-            with open(filepath_to_save, 'w', encoding='utf-8') as f:
-                f.write(content)
-            filename = os.path.basename(filepath_to_save)
-            return {'filepath': filepath_to_save, 'filename': filename}
-        except Exception as e:
-            self.print_terminal(f"\n[{T['err']}] {T['err_save']} {e}\n")
-            return None
 
     def run_code(self, filepath):
         if not filepath: return
@@ -876,7 +1021,10 @@ def setup_macos_open_handler(api):
                 def application_openFile_(self, sender, filename):
                     try:
                         filepath_str = str(filename)
-                        threading.Thread(target=api.open_specific_file, args=(filepath_str,), daemon=True).start()
+                        if os.path.isdir(filepath_str):
+                            threading.Thread(target=api.macos_push_folder, args=(filepath_str,), daemon=True).start()
+                        else:
+                            threading.Thread(target=api.macos_push_file, args=(filepath_str,), daemon=True).start()
                     except Exception: pass
                     return True
                 
@@ -888,7 +1036,10 @@ def setup_macos_open_handler(api):
                     try:
                         for f in filenames:
                             filepath_str = str(f)
-                            threading.Thread(target=api.open_specific_file, args=(filepath_str,), daemon=True).start()
+                            if os.path.isdir(filepath_str):
+                                threading.Thread(target=api.macos_push_folder, args=(filepath_str,), daemon=True).start()
+                            else:
+                                threading.Thread(target=api.macos_push_file, args=(filepath_str,), daemon=True).start()
                         if hasattr(sender, 'replyToOpenOrPrint_'):
                             sender.replyToOpenOrPrint_(1)
                     except Exception: pass
@@ -968,7 +1119,9 @@ if __name__ == '__main__':
         CMD = '⌘'
         menu_items = [
             Menu('Plik' if is_pl else 'File', [
-                MenuAction(f"Otwórz  ({CMD}O)", lambda: APP_WINDOW.evaluate_js('setTimeout(openFile, 10)')),
+                MenuAction(f"Otwórz plik  ({CMD}O)", lambda: APP_WINDOW.evaluate_js('setTimeout(openFile, 10)')),
+                MenuAction("Otwórz folder", lambda: APP_WINDOW.evaluate_js('setTimeout(openFolder, 10)')),
+                MenuAction(f"Otwórz ostatnie  ({CMD}R)", lambda: APP_WINDOW.evaluate_js('setTimeout(showRecent, 10)')),
                 MenuAction(f"Zapisz  ({CMD}S)", lambda: APP_WINDOW.evaluate_js('setTimeout(saveFile, 10)'))
             ]),
             Menu('Edycja' if is_pl else 'Edit', [
