@@ -21,7 +21,7 @@ VSVersionInfo(
         StringStruct(u'LegalCopyright', u'Copyright (c) 2026 Daniel Kaliski'),
         StringStruct(u'OriginalFilename', u'EditCode.exe'),
         StringStruct(u'ProductName', u'EditCode'),
-        StringStruct(u'ProductVersion', u'1.1.0')])
+        StringStruct(u'ProductVersion', u'1.1.0.0')])
       ]),
     VarFileInfo([VarStruct(u'Translation', [1045, 1200])])
   ]
