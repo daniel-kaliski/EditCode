@@ -27,8 +27,13 @@ jobs:
         python -m pip install --upgrade pip
         pip install pywebview pyinstaller
 
-    - name: Build with PyInstaller
+    - name: Build with PyInstaller (macOS)
+      if: runner.os == 'macOS'
       run: pyinstaller --clean EditCode.spec
+
+    - name: Build with PyInstaller (Windows)
+      if: runner.os == 'Windows'
+      run: pyinstaller --noconfirm --onefile --windowed --icon "icon.ico" --version-file "version_info.txt" "EditCode.py"
 
     - name: Prepare macOS Artifact
       if: runner.os == 'macOS'
