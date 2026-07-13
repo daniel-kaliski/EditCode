@@ -166,6 +166,11 @@ HTML_CONTENT = """
         .term-btn:hover { color: #fff; }
         #terminal { flex: 1; color: #00ff00; padding: 10px 15px; overflow-y: auto; font-family: 'Menlo', 'Consolas', monospace; font-size: 12px; white-space: pre-wrap; word-wrap: break-word; user-select: text; -webkit-user-select: text; cursor: text; }
         
+        #terminal::-webkit-scrollbar { width: 8px; height: 8px; }
+        #terminal::-webkit-scrollbar-track { background: #0a0a0a; }
+        #terminal::-webkit-scrollbar-thumb { background: #444; border-radius: 4px; }
+        #terminal::-webkit-scrollbar-thumb:hover { background: #555; }
+        
         .overlay { display: none; position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.65); z-index: 9999; justify-content: center; align-items: center; backdrop-filter: blur(3px); }
         .modal { background: #1e1e1e; border: 1px solid #333; border-radius: 12px; padding: 30px; width: 340px; box-shadow: 0 20px 45px rgba(0,0,0,0.6); display: flex; flex-direction: column; align-items: center; text-align: center; }
         .exit-icon { font-size: 48px; margin-bottom: 15px; line-height: 1; }
@@ -236,7 +241,7 @@ HTML_CONTENT = """
             </div>
         </div>
     </div>
-
+    
     <div id="recent-overlay" class="overlay">
         <div class="modal" style="width: 480px; align-items: flex-start; text-align: left; padding: 25px;">
             <h3 style="margin: 0 0 15px 0; color: #fff; font-size: 16px;" id="txt-recent-title">Ostatnio otwierane</h3>
@@ -383,6 +388,14 @@ HTML_CONTENT = """
             }, 100);
         }
 
+        function handleCloseTab(e, id) {
+            if (e) {
+                e.stopPropagation();
+                e.preventDefault();
+            }
+            closeTab(id);
+        }
+
         function renderTabs() {
             let html = '';
             tabs.forEach(t => {
@@ -390,7 +403,7 @@ HTML_CONTENT = """
                 let fullPath = t.filepath || UI.newFile;
                 
                 html += `<div class="tab ${t.id === activeTabId ? 'active' : ''}" onclick="switchTab(${t.id})" title="${fullPath}">
-                            <span class="tab-close" onclick="event.stopPropagation(); closeTab(${t.id})" title="${UI.closeTab}">×</span>
+                            <span class="tab-close" onclick="handleCloseTab(event, ${t.id})" title="${UI.closeTab}">×</span>
                             <span class="tab-title">${title}</span>
                          </div>`;
             });
@@ -401,11 +414,21 @@ HTML_CONTENT = """
         }
 
         function addTab(filepath, content, lang) {
+            // Zabezpieczenie przed tworzeniem duplikatów: jeśli plik jest już otwarty, tylko go aktywuj
+            if (filepath) {
+                let existingTab = tabs.find(t => t.filepath === filepath);
+                if (existingTab) {
+                    switchTab(existingTab.id);
+                    return;
+                }
+            }
+            
             if (filepath && tabs.length === 1 && !tabs[0].filepath && tabs[0].saved) {
                 let currentVal = editor ? editor.getValue() : tabs[0].content;
                 let defaultCode = isEN ? '# Welcome to EditCode!\\n' : '# Witaj w EditCode!\\n';
                 if (currentVal.trim() === defaultCode.trim() || currentVal.trim() === '') {
                     tabs = [];
+                    activeTabId = null; // Ważne dla zachowania spójności po wyczyszczeniu
                 }
             }
             
@@ -633,6 +656,33 @@ HTML_CONTENT = """
             } else if (pendingAction === 'closeTab') {
                 forceCloseTab(pendingData);
                 hideModal();
+            }
+        }
+
+        function closeTab(id) {
+            let tab = tabs.find(t => t.id === id);
+            if (!tab) return; // Zabezpieczenie przed podwójnym kliknięciem
+            
+            if (!tab.saved) {
+                let msg = UI.unsavedTab.replace('{0}', tab.filename);
+                showModal(msg, 'closeTab', id);
+                return;
+            }
+            forceCloseTab(id);
+        }
+
+        function forceCloseTab(id) {
+            let isActive = (activeTabId === id);
+            tabs = tabs.filter(t => t.id !== id);
+            
+            if (tabs.length === 0) {
+                activeTabId = null; 
+                addTab('', '', 'python'); 
+            } else if (isActive) {
+                activeTabId = null; 
+                switchTab(tabs[tabs.length - 1].id);
+            } else {
+                renderTabs();
             }
         }
 
