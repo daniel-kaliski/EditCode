@@ -18,6 +18,7 @@ import subprocess
 import threading
 import json
 import platform
+import urllib.parse
 import base64
 
 is_pl = False
@@ -105,7 +106,7 @@ HTML_CONTENT = """
         #win-menu { display: flex; background: #151515; font-size: 13px; border-bottom: 1px solid #333; user-select: none; flex-shrink: 0; }
         .menu-item { position: relative; padding: 8px 14px; cursor: pointer; color: #ccc; }
         .menu-item:hover, .menu-item.active { background: #333; color: #fff; }
-        .dropdown { display: none; position: absolute; top: 100%; left: 0; background: #252525; border: 1px solid #444; min-width: 230px; box-shadow: 0 8px 20px rgba(0,0,0,0.6); z-index: 1000; padding: 5px 0; border-radius: 0 4px 4px 4px; }
+        .dropdown { display: none; position: absolute; top: 100%; left: 0; background: #252525; border: 1px solid #444; min-width: 250px; box-shadow: 0 8px 20px rgba(0,0,0,0.6); z-index: 1000; padding: 5px 0; border-radius: 0 4px 4px 4px; }
         .menu-item.active .dropdown { display: block; }
         .drop-item { padding: 8px 15px; display: flex; justify-content: space-between; color: #ccc; align-items: center; }
         .drop-item:hover { background: var(--accent); color: #000; font-weight: 500; }
@@ -124,7 +125,7 @@ HTML_CONTENT = """
         #btn-run[data-tooltip]::after { left: 5px; transform: none; }
         
         #main-body { display: flex; flex: 1; min-height: 0; overflow: hidden; }
-        
+       
         #sidebar { width: 240px; background: #151515; border-right: 1px solid #333; display: none; flex-direction: column; flex-shrink: 0; }
         .sidebar-title { padding: 10px 15px; font-size: 11px; text-transform: uppercase; color: #888; border-bottom: 1px solid #222; letter-spacing: 1px; flex-shrink: 0; user-select: none; }
         #file-tree-content { flex: 1; overflow-y: auto; padding: 5px 0; }
@@ -267,6 +268,7 @@ HTML_CONTENT = """
             openFolder: isEN ? "Open Folder" : "Otwórz folder",
             openRecent: isEN ? "Open Recent" : "Otwórz ostatnie",
             save: isEN ? "Save" : "Zapisz",
+            saveAs: isEN ? "Save As" : "Zapisz jako",
             undo: isEN ? "Undo" : "Cofnij",
             redo: isEN ? "Redo" : "Ponów",
             copy: isEN ? "Copy" : "Kopiuj",
@@ -294,6 +296,7 @@ HTML_CONTENT = """
                     <div class="drop-item" onclick="openFolder()">${UI.openFolder}</div>
                     <div class="drop-item" onclick="showRecent()">${UI.openRecent} <span class="shortcut">Ctrl+R</span></div>
                     <div class="drop-item" onclick="saveFile()">${UI.save} <span class="shortcut">Ctrl+S</span></div>
+                    <div class="drop-item" onclick="saveFileAs()">${UI.saveAs} <span class="shortcut">Ctrl+Shift+S</span></div>
                     <div class="drop-item" onclick="checkQuit()">${UI.quitBtn} <span class="shortcut">Alt+F4</span></div>
                 </div>
             </div>
@@ -389,6 +392,14 @@ HTML_CONTENT = """
         }
 
         function addTab(filepath, content, lang) {
+            if (filepath && tabs.length === 1 && !tabs[0].filepath && tabs[0].saved) {
+                let currentVal = editor ? editor.getValue() : tabs[0].content;
+                let defaultCode = isEN ? '# Welcome to EditCode!\\n' : '# Witaj w EditCode!\\n';
+                if (currentVal.trim() === defaultCode.trim() || currentVal.trim() === '') {
+                    tabs = [];
+                }
+            }
+            
             let id = tabIdCounter++;
             let filename = filepath ? filepath.split(/[\\\\/]/).pop() : UI.newFile;
             tabs.push({ id, filepath, filename, content, lang, saved: true });
@@ -468,8 +479,37 @@ HTML_CONTENT = """
         function saveFile() {
             if (activeTabId === null) return;
             let tab = tabs.find(t => t.id === activeTabId);
+            
+            if (!tab.filepath) {
+                saveFileAs();
+                return;
+            }
+            
             tab.content = editor.getValue();
-            pywebview.api.save_file_dialog(tab.content, tab.filepath).then(function(result) {
+            
+            pywebview.api.save_file_dialog(tab.content, tab.filepath, '').then(function(result) {
+                if(result) {
+                    if(result.error) {
+                        appendTerminal(UI.errSave + " " + result.error + "\\n");
+                    } else {
+                        tab.filepath = result.filepath; 
+                        tab.filename = result.filename; 
+                        tab.saved = true; 
+                        renderTabs(); 
+                        appendTerminal(UI.saveMsg + tab.filename + "\\n"); 
+                    }
+                }
+            });
+        }
+
+        function saveFileAs() {
+            if (activeTabId === null) return;
+            let tab = tabs.find(t => t.id === activeTabId);
+            tab.content = editor.getValue();
+            
+            let defName = tab.filepath ? tab.filename : '';
+            
+            pywebview.api.save_file_dialog(tab.content, null, defName).then(function(result) {
                 if(result) {
                     if(result.error) {
                         appendTerminal(UI.errSave + " " + result.error + "\\n");
@@ -611,6 +651,35 @@ HTML_CONTENT = """
                 }
             });
 
+            if (!isEN) {
+                setInterval(function() {
+                    let findWidget = document.querySelector('.find-widget');
+                    if (findWidget) {
+                        findWidget.querySelectorAll('textarea[placeholder="Find"], input[placeholder="Find"]').forEach(function(e) { e.placeholder = 'Znajdź'; });
+                        findWidget.querySelectorAll('textarea[placeholder="Replace"], input[placeholder="Replace"]').forEach(function(e) { e.placeholder = 'Zamień'; });
+                        findWidget.querySelectorAll('.matchesCount').forEach(function(e) {
+                            if (e.innerText === 'No results') e.innerText = 'Brak wyników';
+                            else if (e.innerText.indexOf(' of ') !== -1) e.innerText = e.innerText.replace(' of ', ' z ');
+                        });
+                        const tooltips = [
+                            ['Toggle Replace mode', 'Przełącz tryb zamiany'], ['Toggle Replace', 'Przełącz tryb zamiany'],
+                            ['Replace All', 'Zamień wszystko'], ['Replace', 'Zamień'],
+                            ['Find in Selection', 'Znajdź w zaznaczeniu'], ['Find in selection', 'Znajdź w zaznaczeniu'],
+                            ['Previous match', 'Poprzedni wynik'], ['Next match', 'Następny wynik'],
+                            ['Close (Escape)', 'Zamknij (Escape)'], ['Match Case', 'Uwzględniaj wielkość liter'],
+                            ['Match Whole Word', 'Dopasuj całe słowo'], ['Use Regular Expression', 'Użyj wyrażeń regularnych'],
+                            ['Preserve Case', 'Zachowaj wielkość liter']
+                        ];
+                        findWidget.querySelectorAll('[title], [aria-label]').forEach(function(e) {
+                            tooltips.forEach(function(t) {
+                                if (e.title && e.title.includes(t[0])) { e.title = e.title.replace(t[0], t[1]); }
+                                if (e.getAttribute('aria-label') && e.getAttribute('aria-label').includes(t[0])) { e.setAttribute('aria-label', e.getAttribute('aria-label').replace(t[0], t[1])); }
+                            });
+                        });
+                    }
+                }, 1000); 
+            }
+
             function loadStartupFile() {
                 if (window.pywebview && window.pywebview.api) {
                     pywebview.api.get_startup_file().then(function(res) {
@@ -691,7 +760,10 @@ HTML_CONTENT = """
         window.addEventListener('keydown', function(e) {
             if (e.ctrlKey || e.metaKey) {
                 let key = e.key.toLowerCase();
-                if (key === 's') { e.preventDefault(); saveFile(); }
+                if (key === 's') { 
+                    e.preventDefault(); 
+                    if (e.shiftKey) { saveFileAs(); } else { saveFile(); } 
+                }
                 if (key === 'o') { e.preventDefault(); openFile(); }
                 if (key === 'r') { e.preventDefault(); showRecent(); }
                 if (key === 'f') { e.preventDefault(); triggerFind(); }
@@ -726,13 +798,35 @@ class BackendApi:
         if platform.system() == 'Darwin':
             def apply_fix():
                 try:
-                    from AppKit import NSApplication
+                    from AppKit import NSApplication, NSMenuItem
+                    import objc
                     app = NSApplication.sharedApplication()
                     main_menu = app.mainMenu()
                     if main_menu:
+                        for i in range(main_menu.numberOfItems()):
+                            item = main_menu.itemAtIndex_(i)
+                            if item and item.title() in ['Edycja', 'Edit']:
+                                edit_menu = item.submenu()
+                                edit_menu.removeAllItems()
+                                
+                                actions = [
+                                    ("Cofnij", b"undo:", "z", False),
+                                    ("Ponów", b"redo:", "z", True),
+                                    ("Wytnij", b"cut:", "x", False),
+                                    ("Kopiuj", b"copy:", "c", False),
+                                    ("Wklej", b"paste:", "v", False),
+                                    ("Zaznacz wszystko", b"selectAll:", "a", False)
+                                ]
+                                
+                                for title, sel, key, is_shift in actions:
+                                    mi = NSMenuItem.alloc().initWithTitle_action_keyEquivalent_(title, objc.selector(None, sel), key)
+                                    if is_shift:
+                                        mi.setKeyEquivalentModifierMask_(1179648) 
+                                    edit_menu.addItem_(mi)
+                                break
+                                
                         allowed_titles = ['Plik', 'Edycja', 'Uruchom'] if is_pl else ['File', 'Edit', 'Run']
                         seen_titles = set()
-                        
                         for i in range(main_menu.numberOfItems() - 1, 0, -1):
                             item = main_menu.itemAtIndex_(i)
                             if item:
@@ -801,6 +895,15 @@ class BackendApi:
     def open_specific_folder(self, folder_path):
         if os.path.isdir(folder_path):
             add_recent(folder_path, 'folder')
+            
+            try:
+                cfg = load_window_state()
+                cfg['last_folder'] = folder_path
+                with open(get_config_path(), 'w', encoding='utf-8') as f:
+                    json.dump(cfg, f)
+            except Exception:
+                pass
+                
             return self._build_tree(folder_path, 0)
         return None
 
@@ -838,13 +941,21 @@ class BackendApi:
             return self.open_specific_file(result[0])
         return None
 
-    def save_file_dialog(self, content, current_filepath):
+    def save_file_dialog(self, content, current_filepath, default_filename=''):
         if not APP_WINDOW: return None
         filepath_to_save = current_filepath
+        
         if not filepath_to_save:
-            result = APP_WINDOW.create_file_dialog(webview.FileDialog.SAVE)
-            if result and len(result) > 0:
-                filepath_to_save = result[0]
+            result = APP_WINDOW.create_file_dialog(webview.FileDialog.SAVE, save_filename=default_filename)
+            
+            if result:
+                if isinstance(result, (list, tuple)):
+                    filepath_to_save = result[0] if len(result) > 0 else None
+                else:
+                    filepath_to_save = str(result)
+                    
+                if not filepath_to_save or filepath_to_save == '/':
+                    return None
             else:
                 return None
 
@@ -873,8 +984,23 @@ class BackendApi:
             if filepath:
                 filepath = os.path.abspath(filepath)
                 if os.path.isdir(filepath):
+                    try:
+                        cfg = load_window_state()
+                        cfg['last_folder'] = filepath
+                        with open(get_config_path(), 'w', encoding='utf-8') as f:
+                            json.dump(cfg, f)
+                    except Exception: pass
                     return {'filepath': filepath, 'type': 'folder'}
                 return self.open_specific_file(filepath)
+        
+        try:
+            cfg = load_window_state()
+            last_folder = cfg.get('last_folder')
+            if last_folder and os.path.isdir(last_folder):
+                return {'filepath': last_folder, 'type': 'folder'}
+        except Exception:
+            pass
+            
         return None
 
     def macos_push_file(self, filepath):
@@ -1085,7 +1211,7 @@ if __name__ == '__main__':
     
     window_cfg = load_window_state()
     create_kwargs = {
-        'title': 'EditCode',
+        'title': 'EditCode v1.1.0',
         'html': HTML_CONTENT,
         'js_api': api,
         'width': window_cfg.get('width', 1100),
@@ -1122,7 +1248,8 @@ if __name__ == '__main__':
                 MenuAction(f"Otwórz plik  ({CMD}O)", lambda: APP_WINDOW.evaluate_js('setTimeout(openFile, 10)')),
                 MenuAction("Otwórz folder", lambda: APP_WINDOW.evaluate_js('setTimeout(openFolder, 10)')),
                 MenuAction(f"Otwórz ostatnie  ({CMD}R)", lambda: APP_WINDOW.evaluate_js('setTimeout(showRecent, 10)')),
-                MenuAction(f"Zapisz  ({CMD}S)", lambda: APP_WINDOW.evaluate_js('setTimeout(saveFile, 10)'))
+                MenuAction(f"Zapisz  ({CMD}S)", lambda: APP_WINDOW.evaluate_js('setTimeout(saveFile, 10)')),
+                MenuAction(f"Zapisz jako  ({CMD}Shift+S)", lambda: APP_WINDOW.evaluate_js('setTimeout(saveFileAs, 10)'))
             ]),
             Menu('Edycja' if is_pl else 'Edit', [
                 MenuAction(f"Cofnij  ({CMD}Z)", lambda: APP_WINDOW.evaluate_js('setTimeout(function(){if(editor) editor.trigger("keyboard", "undo", null);}, 10)')),
