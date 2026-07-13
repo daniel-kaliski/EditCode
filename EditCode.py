@@ -414,7 +414,6 @@ HTML_CONTENT = """
         }
 
         function addTab(filepath, content, lang) {
-            // Zabezpieczenie przed tworzeniem duplikatów: jeśli plik jest już otwarty, tylko go aktywuj
             if (filepath) {
                 let existingTab = tabs.find(t => t.filepath === filepath);
                 if (existingTab) {
@@ -428,7 +427,7 @@ HTML_CONTENT = """
                 let defaultCode = isEN ? '# Welcome to EditCode!\\n' : '# Witaj w EditCode!\\n';
                 if (currentVal.trim() === defaultCode.trim() || currentVal.trim() === '') {
                     tabs = [];
-                    activeTabId = null; // Ważne dla zachowania spójności po wyczyszczeniu
+                    activeTabId = null;
                 }
             }
             
@@ -661,7 +660,7 @@ HTML_CONTENT = """
 
         function closeTab(id) {
             let tab = tabs.find(t => t.id === id);
-            if (!tab) return; // Zabezpieczenie przed podwójnym kliknięciem
+            if (!tab) return; 
             
             if (!tab.saved) {
                 let msg = UI.unsavedTab.replace('{0}', tab.filename);
@@ -683,6 +682,33 @@ HTML_CONTENT = """
                 switchTab(tabs[tabs.length - 1].id);
             } else {
                 renderTabs();
+            }
+        }
+
+        function translateFindWidget() {
+            let findWidget = document.querySelector('.find-widget');
+            if (findWidget && findWidget.style.display !== 'none') {
+                findWidget.querySelectorAll('textarea[placeholder="Find"], input[placeholder="Find"]').forEach(function(e) { e.placeholder = 'Znajdź'; });
+                findWidget.querySelectorAll('textarea[placeholder="Replace"], input[placeholder="Replace"]').forEach(function(e) { e.placeholder = 'Zamień'; });
+                findWidget.querySelectorAll('.matchesCount').forEach(function(e) {
+                    if (e.innerText === 'No results') e.innerText = 'Brak wyników';
+                    else if (e.innerText.indexOf(' of ') !== -1) e.innerText = e.innerText.replace(' of ', ' z ');
+                });
+                const tooltips = [
+                    ['Toggle Replace mode', 'Przełącz tryb zamiany'], ['Toggle Replace', 'Przełącz tryb zamiany'],
+                    ['Replace All', 'Zamień wszystko'], ['Replace', 'Zamień'],
+                    ['Find in Selection', 'Znajdź w zaznaczeniu'], ['Find in selection', 'Znajdź w zaznaczeniu'],
+                    ['Previous match', 'Poprzedni wynik'], ['Next match', 'Następny wynik'],
+                    ['Close (Escape)', 'Zamknij (Escape)'], ['Match Case', 'Uwzględniaj wielkość liter'],
+                    ['Match Whole Word', 'Dopasuj całe słowo'], ['Use Regular Expression', 'Użyj wyrażeń regularnych'],
+                    ['Preserve Case', 'Zachowaj wielkość liter']
+                ];
+                findWidget.querySelectorAll('[title], [aria-label]').forEach(function(e) {
+                    tooltips.forEach(function(t) {
+                        if (e.title && e.title.includes(t[0])) { e.title = e.title.replace(t[0], t[1]); }
+                        if (e.getAttribute('aria-label') && e.getAttribute('aria-label').includes(t[0])) { e.setAttribute('aria-label', e.getAttribute('aria-label').replace(t[0], t[1])); }
+                    });
+                });
             }
         }
 
@@ -723,32 +749,11 @@ HTML_CONTENT = """
             });
 
             if (!isEN) {
-                setInterval(function() {
-                    let findWidget = document.querySelector('.find-widget');
-                    if (findWidget) {
-                        findWidget.querySelectorAll('textarea[placeholder="Find"], input[placeholder="Find"]').forEach(function(e) { e.placeholder = 'Znajdź'; });
-                        findWidget.querySelectorAll('textarea[placeholder="Replace"], input[placeholder="Replace"]').forEach(function(e) { e.placeholder = 'Zamień'; });
-                        findWidget.querySelectorAll('.matchesCount').forEach(function(e) {
-                            if (e.innerText === 'No results') e.innerText = 'Brak wyników';
-                            else if (e.innerText.indexOf(' of ') !== -1) e.innerText = e.innerText.replace(' of ', ' z ');
-                        });
-                        const tooltips = [
-                            ['Toggle Replace mode', 'Przełącz tryb zamiany'], ['Toggle Replace', 'Przełącz tryb zamiany'],
-                            ['Replace All', 'Zamień wszystko'], ['Replace', 'Zamień'],
-                            ['Find in Selection', 'Znajdź w zaznaczeniu'], ['Find in selection', 'Znajdź w zaznaczeniu'],
-                            ['Previous match', 'Poprzedni wynik'], ['Next match', 'Następny wynik'],
-                            ['Close (Escape)', 'Zamknij (Escape)'], ['Match Case', 'Uwzględniaj wielkość liter'],
-                            ['Match Whole Word', 'Dopasuj całe słowo'], ['Use Regular Expression', 'Użyj wyrażeń regularnych'],
-                            ['Preserve Case', 'Zachowaj wielkość liter']
-                        ];
-                        findWidget.querySelectorAll('[title], [aria-label]').forEach(function(e) {
-                            tooltips.forEach(function(t) {
-                                if (e.title && e.title.includes(t[0])) { e.title = e.title.replace(t[0], t[1]); }
-                                if (e.getAttribute('aria-label') && e.getAttribute('aria-label').includes(t[0])) { e.setAttribute('aria-label', e.getAttribute('aria-label').replace(t[0], t[1])); }
-                            });
-                        });
-                    }
-                }, 1000); 
+                const observer = new MutationObserver(function(mutations) {
+                    translateFindWidget();
+                });
+                observer.observe(document.getElementById('editor-container'), { childList: true, subtree: true, attributes: true, attributeFilter: ['style', 'class'] });
+                setInterval(translateFindWidget, 300); 
             }
 
             function loadStartupFile() {
@@ -816,7 +821,14 @@ HTML_CONTENT = """
             term.scrollTop = term.scrollHeight;
         }
 
-        function triggerFind() { if (editor) { editor.trigger('keyboard', 'actions.find', null); } }
+        function triggerFind() { 
+            if (editor) { 
+                editor.trigger('keyboard', 'actions.find', null); 
+                if (!isEN) {
+                    translateFindWidget();
+                }
+            } 
+        }
         
         function runCode() {
             if (activeTabId === null) return;
@@ -874,27 +886,18 @@ class BackendApi:
                     app = NSApplication.sharedApplication()
                     main_menu = app.mainMenu()
                     if main_menu:
-                        for i in range(main_menu.numberOfItems()):
-                            item = main_menu.itemAtIndex_(i)
-                            if item and item.title() in ['Edycja', 'Edit']:
-                                edit_menu = item.submenu()
-                                edit_menu.removeAllItems()
-                                
-                                actions = [
-                                    ("Cofnij", b"undo:", "z", False),
-                                    ("Ponów", b"redo:", "z", True),
-                                    ("Wytnij", b"cut:", "x", False),
-                                    ("Kopiuj", b"copy:", "c", False),
-                                    ("Wklej", b"paste:", "v", False),
-                                    ("Zaznacz wszystko", b"selectAll:", "a", False)
-                                ]
-                                
-                                for title, sel, key, is_shift in actions:
-                                    mi = NSMenuItem.alloc().initWithTitle_action_keyEquivalent_(title, objc.selector(None, sel), key)
-                                    if is_shift:
-                                        mi.setKeyEquivalentModifierMask_(1179648) 
-                                    edit_menu.addItem_(mi)
-                                break
+                        app_menu = main_menu.itemAtIndex_(0).submenu()
+                        if app_menu:
+                            actions = [
+                                ("SysCut", b"cut:", "x"),
+                                ("SysCopy", b"copy:", "c"),
+                                ("SysPaste", b"paste:", "v"),
+                                ("SysSelectAll", b"selectAll:", "a")
+                            ]
+                            for title, sel, key in actions:
+                                mi = NSMenuItem.alloc().initWithTitle_action_keyEquivalent_(title, objc.selector(None, sel), key)
+                                mi.setHidden_(True)
+                                app_menu.addItem_(mi)
                                 
                         allowed_titles = ['Plik', 'Edycja', 'Uruchom'] if is_pl else ['File', 'Edit', 'Run']
                         seen_titles = set()
