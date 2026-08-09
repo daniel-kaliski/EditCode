@@ -57,7 +57,7 @@ if system == 'Darwin':
         coll,
         name='EditCode.app',
         icon=icon_path,
-        bundle_identifier='com.danielkaliski.editcode',
+        bundle_identifier='com.danielkaliski.EditCode',
         info_plist={
             'CFBundleShortVersionString': '1.1.0',
             'CFBundleName': 'EditCode',
