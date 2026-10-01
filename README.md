@@ -1,4 +1,10 @@
-# EditCode 
+<p align="center">
+  <a href="https://apps.apple.com/us/app/editcode/id6808729701" target="_blank">
+    <img src="https://developer.apple.com/assets/elements/badges/download-on-the-app-store.svg" width="180" alt="Download on the App Store">
+  </a>
+</p>
+
+# EditCode™ 
 
 **EditCode** is a lightweight, fast, and modern Integrated Development Environment (IDE) built in Python using the PyQt6 library. The core of the code editor is the **Monaco Editor** engine (the exact same one that powers Visual Studio Code), ensuring smooth syntax highlighting and IntelliSense (smart code completion).
 
