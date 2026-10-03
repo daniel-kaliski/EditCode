@@ -1,3 +1,4 @@
+<p align="center"><strong>Download the latest version for macOS and iPadOS:</strong></p>
 <p align="center">
   <a href="https://apps.apple.com/us/app/editcode/id6808729701" target="_blank">
     <img src="https://developer.apple.com/assets/elements/badges/download-on-the-app-store.svg" width="180" alt="Download on the App Store">
